@@ -1,0 +1,15 @@
+[package]
+name = "witchat-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "BitChat-compatible binary wire protocol for witchat"
+publish = false
+
+[dependencies]
+flate2.workspace = true
+hex.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true

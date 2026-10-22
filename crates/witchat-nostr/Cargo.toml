@@ -1,0 +1,27 @@
+[package]
+name = "witchat-nostr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Nostr location channels and favorites DMs"
+publish = false
+
+[dependencies]
+witchat-protocol.workspace = true
+nostr-sdk.workspace = true
+nostr.workspace = true
+secp256k1.workspace = true
+base64.workspace = true
+chacha20poly1305.workspace = true
+hmac.workspace = true
+rand.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+tokio-socks.workspace = true
+webpki-roots.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true

@@ -1,0 +1,13 @@
+# systemd user unit for `witchat --relay` (docs/LINUX.md "Headless relay").
+[Unit]
+Description=witchat mesh relay (no window)
+After=bluetooth.target network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/witchat --relay
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

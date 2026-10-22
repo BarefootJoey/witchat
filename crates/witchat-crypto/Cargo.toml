@@ -1,0 +1,19 @@
+[package]
+name = "witchat-crypto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Identity, Noise XX, and Ed25519 signing for witchat"
+publish = false
+
+[dependencies]
+witchat-protocol.workspace = true
+chacha20poly1305.workspace = true
+ed25519-dalek.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+snow.workspace = true
+thiserror.workspace = true
+x25519-dalek.workspace = true
+zeroize.workspace = true

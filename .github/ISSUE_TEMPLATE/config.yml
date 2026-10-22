@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/BarefootJoey/witchat/security/advisories/new
+    about: Please report security problems privately, as described in SECURITY.md.
+  - name: Problem with the official bitchat apps
+    url: https://github.com/permissionlesstech/bitchat/issues
+    about: witchat is independent; issues that also happen phone-to-phone belong upstream.

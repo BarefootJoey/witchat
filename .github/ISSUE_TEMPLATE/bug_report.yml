@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in witchat does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The diagnostics report is the most useful thing you can attach:
+        open **witchat/ → debug → copy diagnostics report**, or run `witchat --diag` in a terminal.
+        It leaves out message text, keys and nicknames and shortens ids, but please read it before posting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open witchat with the phone nearby
+        2. ...
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (please name the distribution below)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: witchat version
+      description: The `build:` line of the diagnostics report.
+      placeholder: witchat 0.1.0 (abc123def456) windows/x86_64
+    validations:
+      required: true
+  - type: textarea
+    id: diag
+    attributes:
+      label: Diagnostics report
+      description: Paste the copied report here.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Extra log lines (optional)
+      description: |
+        Logs live in `%LOCALAPPDATA%\witchat\witchat\data\logs` (Windows) or `~/.local/share/witchat/logs` (Linux).
+        Turning on **debug → verbose logging** before reproducing adds detail. Remove anything you would not post publicly.
+      render: text

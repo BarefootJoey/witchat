@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo build -p witchat-app --release
+      - run: cargo run -q -p witchat-xtask -- dist target/release/witchat.exe dist/windows
+      - uses: actions/upload-artifact@v7
+        with:
+          name: witchat-windows
+          path: dist/windows/
+
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libssl-dev
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo build -p witchat-app --release
+      - run: cargo run -q -p witchat-xtask -- dist target/release/witchat dist/linux
+      - run: cd dist/linux && sha256sum -c witchat.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: witchat-linux
+          path: dist/linux/

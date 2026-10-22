@@ -1,0 +1,97 @@
+name: release
+
+# Push a tag like v0.1.0 to build both portable binaries from that commit and
+# attach them to a DRAFT GitHub Release. Publishing the draft stays manual.
+# Run it by hand (workflow_dispatch) to rehearse: same builds, notes and sums,
+# uploaded as an artifact, no Release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NAME: ${{ github.ref_type == 'tag' && github.ref_name || 'rehearsal' }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace
+      - run: cargo build -p witchat-app --release
+      - run: cargo run -q -p witchat-xtask -- dist target/release/witchat.exe dist/windows
+      - shell: pwsh
+        run: Compress-Archive -Path dist/windows/* -DestinationPath "witchat-$env:NAME-windows-x86_64.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: witchat-*.zip
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libssl-dev
+      - run: cargo test --workspace
+      - run: cargo build -p witchat-app --release
+      - run: cargo run -q -p witchat-xtask -- dist target/release/witchat dist/linux
+      - run: cd dist/linux && sha256sum -c witchat.sha256
+      - run: tar -C dist/linux -czf "witchat-$NAME-linux-x86_64.tar.gz" .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-linux
+          path: witchat-*.tar.gz
+
+  draft:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: src
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+      - name: Tag must match the crate version
+        run: |
+          tar -xzf witchat-*-linux-x86_64.tar.gz ./witchat.json
+          version=$(python3 -c "import json; print(json.load(open('witchat.json'))['version'])")
+          rm witchat.json
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != crate v$version"; exit 1; }
+          fi
+      - name: Release notes are the CHANGELOG.md section for this version
+        run: |
+          if grep -q "^## $VERSION (unreleased)" src/CHANGELOG.md; then
+            if [ "$GITHUB_REF_TYPE" = tag ]; then echo "CHANGELOG.md still says $VERSION (unreleased)"; exit 1; fi
+            echo "::warning::CHANGELOG.md still says $VERSION (unreleased); a tag would stop here"
+          fi
+          awk -v v="$VERSION" 'index($0, "## " v) == 1 {on=1; next} on && /^## / {exit} on {print}' src/CHANGELOG.md \
+            | sed -E "s#\]\((\./)?([A-Za-z][^):]*)\)#](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/\2)#g" > NOTES.md
+          test -s NOTES.md || { echo "CHANGELOG.md has no '## $VERSION' section"; exit 1; }
+          cat NOTES.md
+      - run: sha256sum witchat-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Create draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}" witchat-* SHA256SUMS.txt
+          --repo "${{ github.repository }}" --draft --verify-tag
+          --title "witchat ${{ github.ref_name }}"
+          --notes-file NOTES.md
+      - name: Keep the rehearsal
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-rehearsal
+          path: |
+            witchat-*
+            SHA256SUMS.txt
+            NOTES.md

@@ -1,0 +1,58 @@
+name: Phone interop problem
+description: witchat and an official bitchat phone do not see each other, or messages, files or receipts go missing.
+labels: [interop]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Interop problems are easiest to fix with both sides' view. On the PC, copy the report from
+        **witchat/ → debug**. The phone apps have their own debug screens (Android: settings → debug;
+        iOS: tap `bitchat/`), and a screenshot of their peer list or mesh graph helps a lot.
+  - type: dropdown
+    id: phone
+    attributes:
+      label: Phone app
+      options:
+        - bitchat for Android (Google Play)
+        - bitchat for Android (GitHub release or F-Droid)
+        - bitchat for iPhone (App Store)
+        - bitchat for iPhone (TestFlight or source build)
+    validations:
+      required: true
+  - type: input
+    id: phone_version
+    attributes:
+      label: Phone app version
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: What fails
+      multiple: true
+      options:
+        - The phone never appears in witchat
+        - witchat never appears on the phone
+        - Public #mesh messages
+        - Private messages or handshake
+        - Delivery or read receipts
+        - Images, voice notes or files
+        - Verification (QR)
+        - Location channels or Nostr fallback
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include roughly when it happened (UTC), so it can be matched to the log.
+    validations:
+      required: true
+  - type: textarea
+    id: diag
+    attributes:
+      label: witchat diagnostics report
+      render: text
+    validations:
+      required: true

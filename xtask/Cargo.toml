@@ -1,0 +1,19 @@
+[package]
+name = "witchat-xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Release helpers: checksums, provenance, dependency notices"
+publish = false
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

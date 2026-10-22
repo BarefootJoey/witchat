@@ -1,0 +1,21 @@
+name: audit
+
+# Fails on published security advisories for any locked dependency. Runs
+# weekly too, because advisories land without a commit here.
+on:
+  push:
+    paths: ['Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.github/workflows/audit.yml']
+  pull_request:
+    paths: ['Cargo.lock', 'Cargo.toml', '**/Cargo.toml']
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
