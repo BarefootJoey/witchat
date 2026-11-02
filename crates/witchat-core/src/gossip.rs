@@ -16,6 +16,13 @@ use witchat_protocol::{MessageType, Packet, PeerId, PrekeyBundle, RequestSync};
 const MESSAGE_CAP: usize = 256;
 /// iOS `maxMessageAgeSeconds` / `publicMessageMaxAgeSeconds`.
 const MAX_AGE_MS: u64 = 900_000;
+/// Local retention experiment: public messages stay in the sync cache for
+/// 6 h. Deliberately separate from MAX_AGE_MS so announcements and
+/// fragments keep the stock 15-min window.
+pub(crate) const MESSAGE_MAX_AGE_MS: u64 = 6 * 60 * 60 * 1000;
+/// Ring cap for the public-message cache alone; the stock MESSAGE_CAP
+/// (256) would starve a 6 h window on a busy mesh.
+const MESSAGE_CACHE_CAP: usize = 2048;
 /// iOS `stalePeerTimeoutSeconds`: older announces are not offered.
 const ANNOUNCE_FRESH_MS: u64 = 60_000;
 /// iOS `bleMaxTimestampSkewMs`-style bound on future-dated packets.
@@ -95,13 +102,13 @@ impl Gossip {
                     self.announces.insert(key, clean(packet));
                 }
             }
-            Some(MessageType::Message) if Self::fresh(packet, now_ms, MAX_AGE_MS) => {
+            Some(MessageType::Message) if Self::fresh(packet, now_ms, MESSAGE_MAX_AGE_MS) => {
                 let id = gcs::packet_id(packet);
                 if self.messages.iter().any(|(held, _)| *held == id) {
                     return;
                 }
                 self.messages.push_back((id, clean(packet)));
-                while self.messages.len() > MESSAGE_CAP {
+                while self.messages.len() > MESSAGE_CACHE_CAP {
                     self.messages.pop_front();
                 }
             }
@@ -139,9 +146,20 @@ impl Gossip {
         self.announces.remove(&witchat_protocol::hexutil::encode(sender));
     }
 
+    /// Wire copies of every cached public message still inside its window,
+    /// oldest first. Lets the relay persist and restore the cache across
+    /// restarts without touching announcements, fragments or bundles.
+    pub(crate) fn backup_messages(&self, now_ms: u64) -> Vec<Vec<u8>> {
+        self.messages
+            .iter()
+            .filter(|(_, p)| Gossip::fresh(p, now_ms, MESSAGE_MAX_AGE_MS))
+            .filter_map(|(_, p)| p.encode(false))
+            .collect()
+    }
+
     fn prune(&mut self, now_ms: u64) {
         self.announces.retain(|_, p| Gossip::fresh(p, now_ms, MAX_AGE_MS));
-        self.messages.retain(|(_, p)| Gossip::fresh(p, now_ms, MAX_AGE_MS));
+        self.messages.retain(|(_, p)| Gossip::fresh(p, now_ms, MESSAGE_MAX_AGE_MS));
         self.bundles.retain(|_, p| Gossip::fresh(p, now_ms, BUNDLE_MAX_AGE_MS));
         self.fragments.retain(|(_, p)| Gossip::fresh(p, now_ms, MAX_AGE_MS));
         self.fragment_bytes = self.fragments.iter().map(|(_, p)| p.payload.len()).sum();

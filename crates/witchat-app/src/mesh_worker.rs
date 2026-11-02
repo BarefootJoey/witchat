@@ -322,6 +322,33 @@ pub(crate) struct Worker {
 }
 
 impl Worker {
+    /// Persist the 6 h public-message sync cache (local retention experiment).
+    fn save_public_cache(&self) {
+        let Some(path) = public_cache_path() else { return };
+        if let Some(dir) = path.parent() {
+            if !dir.exists() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+        }
+        let now = witchat_protocol::packet::now_millis();
+        let packets: Vec<String> = self
+            .router
+            .public_cache_backup(now)
+            .into_iter()
+            .map(|b| witchat_protocol::hexutil::encode(&b))
+            .collect();
+        if packets.is_empty() && !path.exists() {
+            return;
+        }
+        let doc = serde_json::json!({ "saved_at": now, "packets": packets });
+        if let Ok(bytes) = serde_json::to_vec(&doc) {
+            let tmp = path.with_extension("json.tmp");
+            if std::fs::write(&tmp, bytes).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
+        }
+    }
+
     /// Build the identity-dependent parts: router, Nostr inbox, geo identities.
     pub(crate) async fn links_for(
         router: &MeshRouter,
@@ -558,6 +585,40 @@ const WAKE_GAP: Duration = Duration::from_millis(50);
 /// threads and memory.
 const WORKER_THREADS: usize = 4;
 
+const PUBLIC_CACHE_FILE: &str = "gossip_public_cache.json";
+
+fn public_cache_path() -> Option<std::path::PathBuf> {
+    crate::app_dirs::data_dir().map(|mut d| {
+        d.push(PUBLIC_CACHE_FILE);
+        d
+    })
+}
+
+/// Re-ingest cached public packets saved before the last restart. Full
+/// receive path: freshness, dedup and validity checks all re-run inside
+/// `ingest_packet`, so nothing stale or malformed slips past.
+fn restore_public_cache(router: &mut MeshRouter, path: &std::path::Path) -> usize {
+    let Ok(raw) = std::fs::read(path) else { return 0 };
+    let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&raw) else { return 0 };
+    let Some(list) = doc.get("packets").and_then(|v| v.as_array()) else { return 0 };
+    let mut restored = 0;
+    for item in list {
+        let Some(text) = item.as_str() else { continue };
+        let Ok(bytes) = witchat_protocol::hexutil::decode(text) else { continue };
+        let Some(packet) = witchat_protocol::packet::Packet::decode(&bytes) else { continue };
+        let is_message = matches!(
+            witchat_protocol::packet::MessageType::from_u8(packet.type_id),
+            Some(witchat_protocol::packet::MessageType::Message)
+        );
+        if !is_message {
+            continue;
+        }
+        router.ingest_packet(packet);
+        restored += 1;
+    }
+    restored
+}
+
 async fn mesh_loop(
     radio: Radio,
     nickname: Option<String>,
@@ -570,6 +631,12 @@ async fn mesh_loop(
     let dm_seen = Arc::new(Ledger::nostr_dms());
     crate::relay_refresh::load_cached();
     router.restore_media_receipts(ledger.ids().into_iter().chain(dm_seen.ids()));
+    if let Some(path) = public_cache_path() {
+        let restored = restore_public_cache(&mut router, &path);
+        if restored > 0 {
+            tracing::info!(restored, "gossip cache: restored public messages from disk");
+        }
+    }
     send(&evt_tx, UiEvent::Status(format!("identity {}  nick {}", router.local_peer_id(), router.identity.nickname)));
     send(&evt_tx, UiEvent::Status(crate::key_protect::Protection::current().describe().into()));
     if let Some(dir) = crate::logging::log_dir() {
@@ -644,6 +711,7 @@ async fn mesh_loop(
     let mut dm_tick = tokio::time::interval(Duration::from_secs(5));
     let mut diag_tick = tokio::time::interval(Duration::from_secs(2));
     let mut health_tick = tokio::time::interval_at(tokio::time::Instant::now() + HEALTH_EVERY, HEALTH_EVERY);
+    let mut cache_tick = tokio::time::interval(Duration::from_secs(60));
     let mut power_tick = tokio::time::interval(POWER_EVERY);
     loop {
         tokio::select! {
@@ -664,6 +732,7 @@ async fn mesh_loop(
             }
             _ = diag_tick.tick() => w.push_diag(),
             _ = health_tick.tick() => w.log_health(),
+            _ = cache_tick.tick() => w.save_public_cache(),
             _ = power_tick.tick() => {
                 if let Some(central) = w.out.central() {
                     central.set_low_power(radio.low_power || crate::power::on_battery());

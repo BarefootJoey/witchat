@@ -133,6 +133,12 @@ impl MeshRouter {
             .then_some(sender)
     }
 
+    /// Wire encodings (without padding) of the public-message sync cache,
+    /// oldest first, still inside the retention window.
+    pub fn public_cache_backup(&self, now_ms: u64) -> Vec<Vec<u8>> {
+        self.gossip.backup_messages(now_ms)
+    }
+
     pub fn ingest_packet(&mut self, packet: Packet) -> Ingest {
         let mut out = Ingest::default();
         let type_name = MessageType::from_u8(packet.type_id).map(|t| t.as_str()).unwrap_or("unknown");
