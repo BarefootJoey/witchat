@@ -116,12 +116,16 @@ impl MeshRouter {
     pub(crate) fn announce_trust(&self, sender: &PeerId, packet: &Packet, ann: &Announcement) -> AnnounceTrust {
         let known = self.peers.get(sender);
         let same_key = |old: Option<&Vec<u8>>, new: &Vec<u8>| old.is_none_or(|k| k.is_empty() || k == new);
-        let verified = PeerId::from_noise_public_key(&ann.noise_public_key).hex == sender.hex
-            && same_key(known.map(|p| &p.noise_public_key), &ann.noise_public_key)
-            && same_key(known.map(|p| &p.signing_public_key), &ann.signing_public_key)
-            && packet.signature.is_some()
-            && verify_packet_with(packet, &ann.signing_public_key);
-        AnnounceTrust { verified, direct: packet.ttl >= DEFAULT_TTL }
+        let noise_matches = PeerId::from_noise_public_key(&ann.noise_public_key).hex == sender.hex;
+        let keys_stable = same_key(known.map(|p| &p.noise_public_key), &ann.noise_public_key)
+            && same_key(known.map(|p| &p.signing_public_key), &ann.signing_public_key);
+        let sig_present = packet.signature.is_some();
+        let sig_valid = sig_present && verify_packet_with(packet, &ann.signing_public_key);
+        tracing::debug!(
+            peer = %sender.hex, noise_matches, keys_stable, sig_present, sig_valid,
+            "announce trust"
+        );
+        AnnounceTrust { verified: noise_matches && keys_stable && sig_valid, direct: packet.ttl >= DEFAULT_TTL }
     }
 
     /// We just heard a verified announce from `peer`, or secured a session
