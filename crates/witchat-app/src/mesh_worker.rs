@@ -605,10 +605,10 @@ fn restore_public_cache(router: &mut MeshRouter, path: &std::path::Path) -> usiz
     for item in list {
         let Some(text) = item.as_str() else { continue };
         let Ok(bytes) = witchat_protocol::hexutil::decode(text) else { continue };
-        let Some(packet) = witchat_protocol::packet::Packet::decode(&bytes) else { continue };
+        let Some(packet) = witchat_protocol::Packet::decode(&bytes) else { continue };
         let is_message = matches!(
-            witchat_protocol::packet::MessageType::from_u8(packet.type_id),
-            Some(witchat_protocol::packet::MessageType::Message)
+            witchat_protocol::MessageType::from_u8(packet.type_id),
+            Some(witchat_protocol::MessageType::Message)
         );
         if !is_message {
             continue;
