@@ -307,11 +307,11 @@ Supported conclusion, downgraded to **[?]** pending per-interval advertising evi
 
 Do not restore the generic beacon merely to improve Bluetooth Settings visibility — restore it only for a stated purpose, recording the change.
 
-**Open item:** establish the last confirmed successful advertisement (and its timestamp) from logs, read-only; see §7.
+**Open item — reviewed read-only, 2026-11-08 ~14:20 PST:** no retained log on this station records a successful generic-beacon advertisement. Evidence: bluetoothd journal (earliest record Nov 7 11:46:13) shows every `RegisterAdvertisement` attempt failing `Invalid Parameters (0x0d)` through Nov 8 13:56; `/tmp/bt-advd.log` shows 145 `advertise on` attempts → 145 failures, zero `new_settings: advertising` transitions; `/tmp/bt-beacon.log` (post-12:33 holder) shows the same all-fail pattern; witchat relay logs Nov 3–8 show the peripheral path never registered on any retained day. **Conclusion: last confirmed successful advertisement = none within retained logs.** A success before the retained window cannot be fully excluded if logs were lost, but no available evidence records one. The earlier claim that the generic beacon "registered fine Nov 5–7" is unsupported by any retained log and retracted.
 
 ## 7. Open items and where the evidence lives
 
-- Last confirmed successful advertisement on the CM5 (and timestamp) — to be established by read-only log review; current `btmgmt` state is a snapshot, not history
+- Last confirmed successful advertisement on the CM5 (and timestamp) — reviewed read-only 2026-11-08: **none found in any retained log** (bluetoothd journal, `/tmp/bt-advd.log`, `/tmp/bt-beacon.log`, witchat logs Nov 3–8); see §6
 - CM5 peripheral advertisement rejection (MGMT Invalid Parameters 0x0d on data step) — layer unresolved → issue #2 (+ captures)
 - Zero 2 W session-establishment failure with transport alive — attribution unresolved → issue #2
 - Offline DM relay/spooling → issue #1
