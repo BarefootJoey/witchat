@@ -64,7 +64,9 @@ Cross-board sanity notes:
 
 [O] Pairing-method outcome on the CM5 stack: numeric-compare (PIN screen) was presented in every attempt across multiple configurations, including with an explicit NoInputNoOutput agent registered and only one bluetoothctl session alive. Just Works was **not achieved** on this board in our attempts. On the CM4, the first pairing attempt was Just Works.
 
-[O] An **unresolved pairing offer kills sessions**: phone offers pairing → offer unanswered ~60 s → iOS SMP times out → phone sends `Pairing Failed (0x0c)` → BlueZ tears down the whole link (`Disconnect, Reason: Authentication Failure (0x05)`). Relay log shows the aftermath as `BLE link went silent; dropping it`. Completing the pairing once (durable bond), or clearing the stale offer (Forget This Device + BT toggle), both stopped the cycle in our tests. Note the log line alone only proves inactivity + witchat's cleanup — correlate SMP frames (btmon) before assigning the pairing cause.
+[O] One documented teardown sequence: a pairing offer left unanswered times out (~60 s), iOS sends `Pairing Failed (0x0c, Numeric comparison failed)`, and BlueZ tears down the whole link with `Disconnect, Reason: Authentication Failure (0x05)` (btmon-captured). The relay log shows the aftermath as `BLE link went silent; dropping it`.
+
+**[?] Do not treat "a pending pairing offer exists" as a universal explanation for that watchdog line.** In our captures the sequence above was observed — but log correlation alone does not establish that *every* `went silent` drop had a matched pairing-failure event, nor that resolving pairing offers prevents drops generally. For each drop you diagnose, require a matched event sequence: btmon/journal evidence pairing that specific connection's teardown to a specific SMP failure (or showing its absence). Completing a pairing once (durable bond), or clearing a stale offer (Forget This Device + BT toggle), stopped *observed instances* of the cycle — a recorded intervention result, not a proven universal fix.
 
 ## 5. Diagnostics procedure (one variable at a time, always with a rollback)
 
@@ -90,7 +92,19 @@ Things that are **out of ordinary troubleshooting** (separate, deliberate reset 
 
 **Do not blindly copy an ad-hoc script.** Our first holder version had real problems (fixed /tmp paths, hardcoded UID, no cleanup trap, sudo inside an unattended service, error-check racing async output, blocking FIFO writes, hourly respawn gaps, unconditional power-cycles dropping live links). If you want the holder as a service, write it for your station: private runtime dir, journal logging, explicit readiness check, cleanup traps, bounded recovery — and run it through the §5 procedure. Treat it as optional tooling, not a required component.
 
-**[W]** In our setup, beacon + relay coexisted for days in this arrangement: beacon = name-only visibility; relay = central-only sessions (in-app peer listing followed sessions, exactly once we completed/rejected the pairing offer correctly).
+**[W] Beacon/relay coexistence:** the beacon served name-only visibility in Bluetooth settings; in-app peer listing followed witchat session establishment.
+
+**[O] Beacon-off experiment (2026-11-08):** advertising was disabled *inside* the live holder session (agent preserved; controller `advertising` state verified off; bonds/identities unchanged). Station-side observations with advertising off:
+- Outgoing phone connections and established Noise sessions continued (both peer fingerprints observed; `secured=2` at window close).
+- Traffic counters increased (relayed 436 → 447 during the window).
+- Pairing-related activity and silence-watchdog disconnects were **still observed** — disabling the beacon did not eliminate either behavior.
+- A captured local pairing response presented `KeyboardDisplay (0x04)` despite the intended NoInputNoOutput configuration. **Agent selection remains unresolved; associate this response with its exact connection (handle/frame sequence) before diagnosing it.**
+
+Supported conclusions: the generic beacon is not required for the observed outgoing connections and Noise sessions; disabling it did not eliminate the observed pairing/disconnection behavior. These observations do **not** establish the underlying cause of either behavior. Do not restore the generic beacon merely to improve Bluetooth Settings visibility — restore it only for a stated purpose, recording the change.
+
+**Incomplete validation:** the operator did not confirm continuous foreground operation, in-app relay visibility, or delivery of identifiable messages during the window. Do not infer those from `secured=` counts or aggregate traffic counters.
+
+**Next test:** leave advertising disabled and the agent running; operator keeps bitchat foregrounded with the screen awake for five minutes; confirm relay visibility in-app; exchange identifiable messages between phones; correlate UI observations and message delivery with **timestamped logs and the relevant Bluetooth connection handles**.
 
 ## 7. Open items and where the evidence lives
 
