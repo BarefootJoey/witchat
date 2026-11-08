@@ -1,133 +1,103 @@
-# Running a witchat headless relay on Linux — field guide (operator skill doc)
+# Linux relay operations — verified observations, working configurations, and open questions
 
-Written from a week of real deployments against iOS phones on three board classes (CM4, CM5, Pi Zero 2 W), all on Raspberry Pi OS Trixie / BlueZ 5.82 / kernel 6.12. This covers what the [headless relay](LINUX.md#headless-relay) section starts — and the Bluetooth/agent layer beyond it that you only learn when phones stop behaving. Every claim here has been reproduced with `btmon` traces or relay logs; where a behavior is board-specific we say so.
+Field documentation from running `witchat --relay` against iOS phones across three board classes, plus a procedure for diagnosing relay/Bluetooth problems without destroying working configurations.
 
-> Status: operator documentation from the field, not yet maintainer-reviewed. The companion test evidence lives in issues #1 and #2.
+> **How to read this:** a successful command is not proof of successful pairing, message delivery, or persistent operation. Each claim below is tagged:
+> - **[O]** = direct observation from relay logs or btmon captures (what we saw)
+> - **[W]** = working configuration (reproduced more than once on the named board)
+> - **[?]** = hypothesis or unresolved — do not treat as established
+>
+> Board history, raw interpretation of captures, and per-experiment details are deliberately **not** in this file; they live in upstream issues #1 and #2 with their evidence. Consult those before drawing conclusions the tables here do not answer.
+
+Environment backdrop (record per experiment — do not copy across experiments): Raspberry Pi OS Trixie; BlueZ 5.82; kernel versions seen during this work: **6.12.75+rpt-rpi-v8 (CM4/CM5 tests, Nov 5–8)** and **6.18.50+rpt-rpi-v7 (Zero 2 W captures, Nov 4)**; witchat commit lineage `905f17d → e87853a` (local patches: 6 h public-message retention, packet persistence, announce-trust instrumentation; fingerprint changes when `identity.json` is regenerated).
 
 ---
 
-## 1. The two role planes (know which one you're in)
+## 1. The role planes (verify which one you are in before diagnosing)
 
-witchat on Linux has two independent planes, and they fail separately. Diagnose them apart:
+Two independent planes fail separately. Identify the failing layer first; most dead ends came from treating them as one thing.
 
-| Plane | What it does | How you know it's alive |
+| Plane | What it does | Observable when alive |
 |---|---|---|
-| **Central (client)** | witchat connects *out* to phones' GATT servers, subscribes, exchanges mesh packets, establishes the witchat Noise session | `advertisement matched / GATT connect / connected / subscribed to notifications / link bound to peer` then `noise: session established`; health line shows `secured=1` |
-| **Peripheral (server)** | witchat publishes the bitchat GATT service + advertisement so phones find and connect *in* | `phone subscribed to our GATT server` + `phone writing to our GATT server`; health `ads=1` |
+| **Central (client)** | relay connects *out* to the phone's GATT server, subscribes, carries mesh traffic, establishes the witchat Noise session | `advertisement matched` → `GATT connect` → `connected` → `subscribed to notifications` → `link bound to peer`; then `noise: session established`; health shows `secured=1` **[O]** |
+| **Peripheral (server)** | relay advertises and serves the bitchat GATT service so phones can connect *in* | `phone subscribed to our GATT server`, `phone writing to our GATT server`; health `ads=1` |
 
-**Key fact:** the planes are independent. A fully working central path (secured sessions, mesh relay) does **not** require the peripheral path, and a dead peripheral path does not impair relaying. On boards where the peripheral path is broken (see §3), relays still function — they're just invisible to phone *scans*, not to phone *apps*.
+[O] The planes failed independently on every board tested. A working central path carried secured sessions and relay traffic on a board whose peripheral path never registered.
 
-The central path is untested upstream but is, in practice, the reliable one: it worked end-to-end (Noise sessions, `secured=1`, private + public traffic) on every board we tried.
+[W] The central path established full sessions (`noise: session established`, `secured=1`, public traffic relayed) on CM4 and CM5.
 
-## 2. Board reality (what each class supports)
+[?] Whether the central path is end-to-end functional on Pi Zero 2 W is **unconfirmed** — transport attached but no application session completed in our tests (see issue #2 for the capture evidence; the board-level cause attribution is also unresolved).
 
-Same binary, same BlueZ, three very different outcomes:
+## 2. Board results (per-experiment, not universal)
 
-| Board | BT chip | Peripheral path (advertise + GATT server) | Central path (sessions from phones) | Pairing behavior toward iOS |
+Record your own versions/firmware/role/agent config per experiment; ours are listed so others can compare, not as prescriptions.
+
+| Board / controller | Peripheral path | Central path | Pairing behavior observed | Config notes for that experiment |
 |---|---|---|---|---|
-| CM4 (BCM2711, wireless variant, BCM4345C0) | in-kernel UART after `dtparam=uart0=on` | ✅ works first try | ✅ sessions in seconds | Just Works (no PIN) first try |
-| CM5 (BCM2712, Pi 500-style UART BT) | on-board | ❌ advertisement registration fails at the controller | ✅ works fully (attach → subscribe → bind → `secured=1`) | numeric-compare/PIN only (see §5) |
-| Pi Zero 2 W (BCM43430) | on-board | ✅ advertises, but see #2 for the session-level failure | ✅ works | prompts but pairing stalls (controller/firmware, separate issue) |
+| CM4, wireless variant, BCM4345C0, k6.12.75+rpt-rpi-v8 | [W] registered first try | [W] sessions in seconds, `secured=1` | [O] Just Works (no PIN) on first pairing attempt | Required `dtparam=uart0=on` + `enable_uart=1` in `/boot/firmware/config.txt` on *our* carrier/setup — [O] without it the UART BT controller failed at boot (`BCM: Reset failed (-110)`). Whether other CM4 carrier/bt-UART setups need the same is untested. |
+| CM5, on-board UART BT, k6.12.75+rpt-rpi-v8 | [O] advertisement registration fails every attempt, incl. after daemon restart and cold reboot; btmon: Add-Extended-Advertising-Parameters → *Success (0x00)*, followed by Add-Extended-Advertising-Data → **MGMT Invalid Parameters (0x0d)**. Where exactly the rejection happens (controller firmware vs bluetoothd vs policy) is **unresolved** — the MGMT status alone does not locate it. | [W] full central sessions, `secured=1` | [O] every captured pairing exchange answered with responder `IO capability: KeyboardDisplay (0x04)` **despite a `NoInputNoOutput` agent being registered** → numeric-compare/PIN presented to the user. Cause unresolved — identify the actually-selected agent (application-specific vs default) before assuming any mechanism. | Relay runs healthy central-only; its own peripheral path must be considered dead. A generic name-only beacon (see §6) makes the box visible in the phone's Bluetooth settings but does **not** create a bitchat peer. |
+| Pi Zero 2 W, BCM43430, k6.18.50+rpt-rpi-v7 | [O] advertisement + GATT registration succeeded | [?] transport attached (connect/subscribe/bind) but no application session ever completed in our tests (issue #2); pairing exchange stalled before key exchange | [O] pairing prompts appeared; exchanges aborted early (see issue #2 for the frame-level record; controller-firmware attribution there is a hypothesis, not a finding) | Recoverable with a USB BT dongle on the same board ([W] dongle enumerated + scanned; full pairing on dongle silicon not completed — mark as incomplete) |
 
-Notes:
-- The **CM4 needs `dtparam=uart0=on`** (and `enable_uart=1`) in `/boot/firmware/config.txt`; the Zero W exposes its BT UART by default, the CM4 does not. Without it btmon shows `hci0: BCM: Reset failed (-110)` at boot.
-- **Same SD card moved between boards** keeps identity/nick/services intact — BLE address changes are expected (new controller).
-- The peripheral-path failure on CM5-class silicon is at the kernel/mgmt layer, not a configuration artifact: it survives daemon restarts and cold reboots. btmon signature: `Add Extended Advertising Parameters → Status: Success`, then `Add Extended Advertising Data → Invalid Parameters (0x0d)`.
+Cross-board sanity notes:
+- [O] The same SD card moved between boards kept witchat identity/nick/services; the BLE address changed (expected — new controller).
+- [O] Renaming the adapter alias (`bluetoothctl system-alias …`) changes only the advertised name — it is not a device identity reset and does not clear bonds.
 
-## 3. Advertising: what fails, what still works, and what's cosmetic
+## 3. Advertising failures (observations + how to distinguish layers)
 
-`witchat --relay` publishes its advertisement through BlueZ with its own service UUID. On some boards this registration is rejected:
+[O] Failure signature: relay logs `BLE role status=central-only: advertise: Bluetooth operation failed: Failed to register advertisement` repeating, while central-only operation continues normally.
 
-1. **Symptom:** log line `BLE role status=central-only: advertise: Bluetooth operation failed: Failed to register advertisement` repeating. Relay continues normally as central-only.
-2. **btmon fingerprint:** `MGMT Command: Add Extended Advertising (0x0054)` returns *Success*, the data command (`0x0055`) returns *Invalid Parameters (0x0d)*.
-3. **Check what's actually registered:** `busctl tree org.bluez | grep hci0` — local GATT services = peripheral alive; only `dev_*` (remote devices) = peripheral path dead.
-4. **A plain `bluetoothctl advertise on`** (no service UUIDs) *can* still register on the same controller. That makes the box visible in *phone Bluetooth settings* (name-only beacon — no UUID, no GATT behind it). It does **not** make the relay appear in the *bitchat app*; in-app peer listing follows witchat session establishment. Useful for debugging visibility, but know which layer it feeds.
-5. **Unresolvable-pairing-offer teardown (iOS):** if a pairing request toward your relay is left unanswered, iOS's SMP times out (~60 s) and sends `Pairing Failed (0x0c, Numeric comparison failed)`, after which BlueZ tears down the **whole link** (`Disconnect, Reason: Authentication Failure (0x05)`). The relay's log shows this as `BLE link went silent; dropping it`. An otherwise-healthy app session dies with it. Resolution: complete the pairing once (bond survives), or remove the stale pairing offer (Forget This Device on the phone) — see §5.
+[O] btmon during such registration shows the MGMT two-step split: parameters command succeeds, data command returns Invalid Parameters (0x0d).
 
-## 4. Agents: the layer nobody warns you about
+[O] On the CM5 this survived daemon restarts and a cold reboot — an operational-recovery problem, not a config artifact. Root layer unresolved.
 
-Every `bluetoothctl` session you start can register an agent; whichever agent answers the SMP exchange defines the pairing *method* (see bluer's `agent.rs` capability derivation: handlers present → `DisplayYesNo`/`KeyboardDisplay`, none → `NoInputNoOutput`).
+[Dx — verification limits] `busctl tree org.bluez` shows objects **registered under org.bluez**. Absence of local GATT objects there is consistent with an unregistered GATT application, but is **not sufficient proof**: applications export their own objects over D-Bus. To verify registration results authoritatively, check the application's registration call/result (e.g., bluer's errors in the relay log) and the application's exported object hierarchy.
 
-**Field consequences:**
+[O] A plain `bluetoothctl advertise on` (no service UUIDs) *can* register on the same controller that rejects witchat's payload, making the box visible in the phone's Bluetooth **settings** list. Limitations, verified: name + generic flags only (no UUID), and it does **not** cause the relay to appear as a peer inside the bitchat app — in-app listing followed witchat session establishment, not the beacon. The generic beacon is therefore **optional**; relay operation never required it.
 
-- **One agent holder per machine.** Multiple `bluetoothctl` sessions each registering agents is how "my `NoInputNoOutput` agent is registered but iOS still shows a PIN prompt" happens — a second agent with display-capable handlers answered first. Our verified-stable setup uses **one** session holding: `agent NoInputNoOutput` + `default-agent` *plus* the beacon duties (§6) — i.e., agent and beacon in the *same* session, so nothing else can register agents.
-- **`agent off` only unregisters that session's own agent.** It will not clear another session's registration, and "which agent is default" is a per-application/default-agent precedence question, not a global "last registered wins" — keep the model straight when debugging.
-- **witchat does not register its own agent** (it uses the default agent for pairing actions). What answers is your bluez agent layer + whatever sessions you left running.
-- **Method math:** iOS pairs as KeyboardDisplay with MITM. If our responder also presents display-capability (or the phone cached that from an earlier attempt), SMP lands on *numeric comparison — the 6-digit PIN screen*. Just Works (no PIN) requires our responder to present `NoInputNoOutput`. That was achieved first-try on CM4; on CM5's stack the response still presented KeyboardDisplay even with a single NoIO agent — treat "no-PIN pairing on some controllers" as board-dependent until your own btmon shows a `Pairing Response` with `IO capability: NoInputNoOutput (0x01)`.
-- **btmon is the arbiter:** capture during the pair attempt — `grep -aE "Pairing (Request|Response)" -A2` shows *both* capabilities. Don't reason from agent registrations alone; watch the exchange.
+## 4. Agents (verify what actually answers, never assume)
 
-## 5. The pairing → session stability loop
+[O] Every `bluetoothctl` session we started registered an agent implicitly. Which agent answers a given pairing exchange depends on BlueZ's agent-selection rules (application-specific agents for actions triggered by that application; explicit `default-agent` as fallback). We did **not** determine which agent answered a specific exchange where the responder presented KeyboardDisplay — the selection question is open.
 
-Observed repeatedly, and the cause of most "relay appears for a minute then vanishes" reports:
+[Dx] Do not diagnose from agent registrations alone. Capture the exchange: btmon during the pair attempt, `grep -aE "Pairing (Request|Response)" -A2` shows **both** capabilities. In our captured exchanges the responder presented `IO capability: KeyboardDisplay (0x04)` while a NoInputNoOutput agent was registered — how that selection resolved is unresolved.
 
-```
-relay session up (secured) → phone has pending pairing offer for the relay
-→ offer unanswered ~60 s → SMP timeout → phone sends Pairing Failed (0x0c)
-→ BlueZ tears down the whole link (Authentication Failure 0x05)
-→ relay peer disappears from the app → repeat next time phone re-offers
-```
+[SMP spec note] I/O capability values in SMP fields: DisplayOnly 0x00, Just Works 0x01, KeyboardOnly 0x02, NoInputNoOutput **0x03**, KeyboardDisplay 0x04.
 
-**Fixes, in preferential order:**
-1. Complete the pairing **once** (bond persists; iOS reconnects silently thereafter — this matches the long-held-session behavior seen on day one).
-2. Or flush the stale offer: phone Settings → Bluetooth → forget the relay, toggle Bluetooth, reopen app (fresh attempt; if the responder presents NoInputNoOutput this becomes Just Works).
-3. Keep the app foregrounded during the first attach after any identity/bond reset — first `GATT connect` after changes often times out once while iOS settles, then succeeds on retry (~50 s is normal; the relay backs off exponentially, so a relay restart resets the retry cadence).
+[O] Pairing-method outcome on the CM5 stack: numeric-compare (PIN screen) was presented in every attempt across multiple configurations, including with an explicit NoInputNoOutput agent registered and only one bluetoothctl session alive. Just Works was **not achieved** on this board in our attempts. On the CM4, the first pairing attempt was Just Works.
 
-**Never leave a pairing modal unresolved on a live session** — that's the teardown trigger, not the app lifecycle itself (backgrounded-app GATT pauses are a separate, gentler effect: `Service discovery timed out` on attaches, recoverable on retry).
+[O] An **unresolved pairing offer kills sessions**: phone offers pairing → offer unanswered ~60 s → iOS SMP times out → phone sends `Pairing Failed (0x0c)` → BlueZ tears down the whole link (`Disconnect, Reason: Authentication Failure (0x05)`). Relay log shows the aftermath as `BLE link went silent; dropping it`. Completing the pairing once (durable bond), or clearing the stale offer (Forget This Device + BT toggle), both stopped the cycle in our tests. Note the log line alone only proves inactivity + witchat's cleanup — correlate SMP frames (btmon) before assigning the pairing cause.
 
-## 6. Ops recipes (copy-adapt)
+## 5. Diagnostics procedure (one variable at a time, always with a rollback)
 
-**Single-session agent+beacon holder** (`bt-beacon-s1.sh`; runs as user service, `Restart=always`):
+1. **Read the station's current operations runbook** (the working configuration, last known good state, and known quirks for that box).
+2. **Record the running configuration** before touching anything: service states, adapter flags, alias, identity fingerprint (`grep identity relay/logs/<today>.log | tail -1`), agent processes, kernel/BlueZ versions. If the runbook disagrees with the live state, reconcile the runbook — do not "fix" the live state to match stale notes.
+3. **Identify connection direction and failing layer** (central vs peripheral; BT transport vs app session vs pairing; §1 plane table + §3 registration checks).
+4. **Capture one timestamped attempt** end to end: `sudo btmon -w /tmp/<name>.cap` during the reproduce, plus the relay log tail. btmon decides agent/capability and teardown questions logs can't.
+5. **Change one variable, with a rollback you've written down first.** One flag, one identity action, one service restart per step.
+6. **Verify at the app level** after each change: does the peer appear in the phone's app (not just Bluetooth settings)? Does a public message actually forward (relayed count increasing)? Does the connection hold >2 min? Does reconnect work after BT toggle?
+7. **Update the runbook with what you did, evidence, and remaining uncertainty.** If a hypothesis hardened into a finding, move it (with its capture reference) into the issues. If it remains unresolved, write it down as unresolved — that note is what prevents the next operator from repeating your dead end.
 
-```bash
-#!/bin/bash
-export XDG_RUNTIME_DIR=/run/user/1000
-FIFO=/tmp/bt-beacon-in; rm -f $FIFO; mkfifo $FIFO
-sleep infinity > $FIFO &
-timeout 3600 bluetoothctl < $FIFO > /tmp/bt-beacon.log 2>&1 &
-BT=$!; sleep 3
-printf "agent NoInputNoOutput\ndefault-agent\nadvertise on\npairable on\ndiscoverable on\n" > $FIFO
-# if advertisement registration fails, power-cycle the controller once and re-assert:
-if grep -q "Failed to register" /tmp/bt-beacon.log; then
-  sudo btmgmt -i hci0 power off; sleep 2; sudo btmgmt -i hci0 power on; sleep 3
-  printf "advertise on\npairable on\ndiscoverable on\n" > $FIFO
-fi
-while kill -0 $BT 2>/dev/null; do sleep 25
-  printf "advertise on\npairable on\ndiscoverable on\n" > $FIFO; done
-```
+Things that are **out of ordinary troubleshooting** (separate, deliberate reset procedures):
+- **Regenerating witchat identity** (`identity.json` deletion): changes the node fingerprint and trust relationships; requires backup + rollback plan; and [O] it does **not** clear Bluetooth bonds (BlueZ keeps `dev_*` records independently).
+- **Purging BlueZ bond records / `btmgmt` power-cycles**: both disconnect live links and can leave the radio in states that need re-verification. Do them when a bond/registration question is actually open, not as a reflex.
 
-*Why it looks like this:* the `sleep infinity > FIFO` keeps bluetoothctl's stdin open (a bare `bluetoothctl agent …` exits when stdin EOFs — the classic "my agent service isn't staying up" trap); the FIFO also lets you inject commands live (`printf "advertise on\n" > $FIFO`); the 25 s heartbeat re-asserts adapter flags because bluetoothd resets `Discoverable`/`Pairable` on restarts; the power-cycle clears *stuck advertisement registration state* that survives daemon restarts.
+## 6. Optional name-only beacon (not required for relay operation)
 
-**Flag persistence (so flags survive bluetoothd restarts):**
+[O] Where the peripheral path is dead (CM5-class), some operators still want the box visible in phone Bluetooth settings for debugging. The minimal pattern is **one** `bluetoothctl` session, deliberately also holding the agent so no second session can register a different-capability agent:
 
-- `/etc/bluetooth/main.conf` under `[General]`: `DiscoverableTimeout = 0` and `PairableTimeout = 0`
-- Adapter state file `/var/lib/bluetooth/<adapter-mac>/settings` (system stop bluetooth first): ensure `Discoverable=true`, `Pairable=true`, both `Timeout=0`
+- holds stdin open via FIFO (a bare `bluetoothctl agent …` exits on stdin EOF), asserts `agent NoInputNoOutput` + `default-agent` + `advertise on` + flags
+- on registration failure, power-cycles the controller once and re-asserts **bounded** — power-cycling disconnects witchat's live links, so it must never run unconditionally
+- re-asserts flags on a heartbeat because bluetoothd resets `Discoverable`/`Pairable` across restarts
 
-**Identity reset** (fresh fingerprint; phone sees a brand-new peer):
-```bash
-systemctl --user stop witchat-relay
-rm ~/.local/share/witchat/relay/identity.json   # recreated on next start
-systemctl --user start witchat-relay
-```
+**Do not blindly copy an ad-hoc script.** Our first holder version had real problems (fixed /tmp paths, hardcoded UID, no cleanup trap, sudo inside an unattended service, error-check racing async output, blocking FIFO writes, hourly respawn gaps, unconditional power-cycles dropping live links). If you want the holder as a service, write it for your station: private runtime dir, journal logging, explicit readiness check, cleanup traps, bounded recovery — and run it through the §5 procedure. Treat it as optional tooling, not a required component.
 
-**Diagnostics crib sheet:**
+**[W]** In our setup, beacon + relay coexisted for days in this arrangement: beacon = name-only visibility; relay = central-only sessions (in-app peer listing followed sessions, exactly once we completed/rejected the pairing offer correctly).
 
-| Log/mark | Meaning |
-|---|---|
-| `attach failed… connect …: Service discovery timed out` | phone answered connect but app-layer GATT suspended (backgrounded app) — retry when app foregrounded |
-| `BLE link went silent; dropping it` | watchdog dropped a quiet link — check whether an unresolved pairing offer was pending (see §5) |
-| `Failed to register advertisement` + btmon `0x0d` | peripheral advertisement dead at controller — relay continues central-only |
-| `Pairing Failed (0x05) Reason: …(0x0c)` + `Disconnect Reason: Authentication Failure` | unresolved numeric-compare offer tore down the link — resolve/complete pairing (§5) |
-| `noise: session established` / health `secured=1` | the real thing — session plane is healthy regardless of pairing plane |
-| `link bound to peer … peer=<fp>` | app-layer attachment confirmed |
+## 7. Open items and where the evidence lives
 
-**Capture during any mystery:** `sudo btmon -w /tmp/x.cap` (replay with `btmon -r`). The SMP and MGMT lines decide agent/capability and teardown questions that logs alone can't.
+- CM5 peripheral advertisement rejection (MGMT Invalid Parameters 0x0d on data step) — layer unresolved → issue #2 (+ captures)
+- Zero 2 W session-establishment failure with transport alive — attribution unresolved → issue #2
+- Offline DM relay/spooling → issue #1
+- KeyboardDisplay responder despite NoInputNoOutput agent on CM5 — agent-selection mechanism unresolved (this doc, §4)
+- Pi Zero 2 W central-path end-to-end status — unconfirmed (see §1)
 
-## 7. What's upstream-open (pointers)
-
-- Peripheral registration `0x0d` on CM5-class silicon (parameters accepted, data rejected) — [issue #2].
-- Zero 2 W session-establishment failure with transport alive — [issue #2].
-- Offline DM delivery/relay spooling — [issue #1].
-
-*If you run a relay against phones on other hardware (dongles, other SBCs), the boards matrix in §2 is the part most worth extending — same tests, same fingerprints.*
-EOF
-echo DRAFT-WRITTEN
+*This file is field documentation. When your experiments extend or contradict it — especially the board table and pairing-method findings — open an issue with a btmon capture rather than editing conclusions here, so observations stay separated from diagnoses.*
