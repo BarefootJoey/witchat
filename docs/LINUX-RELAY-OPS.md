@@ -179,15 +179,16 @@ Before deployment:
 - Do not add unattended `sudo`, recurring resets, or identity/bond deletion.
 - Record rollback steps and validate the station-specific service.
 
-## Latest beacon-off test
+## Beacon-absent observation period (renamed — see the correction in §6)
 
-Advertising was disabled inside the existing session while preserving the agent, bonds, identity, and other settings.
+An earlier revision titled "Latest beacon-off test" claimed a controlled experiment. **Superseded:** no controlled beacon-off test was completed. The observations below occurred during an **uncontrolled beacon-absent period**: the holder service restarted at 12:33:20 PST and every subsequent `advertise on` attempt failed (`Failed to register advertisement: org.bluez.Error.Failed`, repeated in `/tmp/bt-beacon.log`). Advertising was **not** proven continuously absent across the whole interval — the current `btmgmt info` output is a point-in-time snapshot, not historical proof; only the individual failure entries are time-anchored. Full correction and evidence paths: §6.
 
-Station-side observations included outgoing connections, established Noise sessions, increasing traffic counters, and recurring pairing/disconnection activity.
+Station-side observations recorded during this period.
+- Outgoing connections, established Noise sessions, increasing traffic counters, recurring pairing/disconnection activity.
 
-**Supported finding:** outgoing connections and Noise sessions were possible without the generic beacon.
+**[?] Provisional finding (needs per-interval advertising evidence):** outgoing connections and Noise sessions were possible while the beacon was absent or failing. Continuous advertising absence is unestablished.
 
-**Still unverified in that window:** continuous foreground operation, actual in-app visibility, and delivery of identifiable messages. Do not infer these from aggregate counters.
+**Still unverified in that window:** continuous foreground operation, actual in-app visibility, delivery of identifiable messages, and continuous advertising absence. Do not infer any of these from aggregate counters or from the snapshot alone.
 
 ## Operating workflow
 
@@ -292,22 +293,25 @@ Things that are **out of ordinary troubleshooting** (separate, deliberate reset 
 
 **Do not blindly copy an ad-hoc script.** Our first holder version had real problems (fixed /tmp paths, hardcoded UID, no cleanup trap, sudo inside an unattended service, error-check racing async output, blocking FIFO writes, hourly respawn gaps, unconditional power-cycles dropping live links). If you want the holder as a service, write it for your station: private runtime dir, journal logging, explicit readiness check, cleanup traps, bounded recovery — and run it through the §5 procedure. Treat it as optional tooling, not a required component.
 
-**[W] Beacon/relay coexistence:** the beacon served name-only visibility in Bluetooth settings; in-app peer listing followed witchat session establishment.
-
-**[O] Beacon-off experiment (2026-11-08):** advertising was disabled *inside* the live holder session (agent preserved; controller `advertising` state verified off; bonds/identities unchanged). Station-side observations with advertising off:
+**[O] Beacon-absent period (2026-11-08, uncontrolled):** station observations recorded while the generic beacon was absent or failing:
 - Outgoing phone connections and established Noise sessions continued (both peer fingerprints observed; `secured=2` at window close).
 - Traffic counters increased (relayed 436 → 447 during the window).
-- Pairing-related activity and silence-watchdog disconnects were **still observed** — disabling the beacon did not eliminate either behavior.
+- Pairing-related activity and silence-watchdog disconnects were **still observed**.
 - A captured local pairing response presented `KeyboardDisplay (0x04)` despite the intended NoInputNoOutput configuration. **Agent selection remains unresolved; associate this response with its exact connection (handle/frame sequence) before diagnosing it.**
 
-Supported conclusions: the generic beacon is not required for the observed outgoing connections and Noise sessions; disabling it did not eliminate the observed pairing/disconnection behavior. These observations do **not** establish the underlying cause of either behavior. Do not restore the generic beacon merely to improve Bluetooth Settings visibility — restore it only for a stated purpose, recording the change.
+**Correction (2026-11-08 ~14:19 PST) — supersedes the earlier "beacon-off experiment" account, which is retained here as explicitly superseded history:** the earlier revision claimed advertising was deliberately disabled *inside* the live holder session. **Retracted: no controlled beacon-off test was completed.** What actually happened: the holder service (`bt-beacon-s1.service`) restarted at 12:33:20 PST (verified `ExecMainStartTimestamp=Sun 2026-11-08 12:33:20 PST`), and its subsequent `advertise on` attempts all failed (repeated `Failed to register advertisement: org.bluez.Error.Failed` in `/tmp/bt-beacon.log`). The observations above therefore describe an **uncontrolled beacon-absent period**, not an intervention. Advertising was **not** verified continuously absent for the whole interval; `btmgmt info` snapshots are point-in-time only.
 
-**Incomplete validation:** the operator did not confirm continuous foreground operation, in-app relay visibility, or delivery of identifiable messages during the window. Do not infer those from `secured=` counts or aggregate traffic counters.
+Supporting evidence: `/tmp/bt-beacon.log` (post-12:33 failure sequence, read-only), `systemctl --user show bt-beacon-s1` start timestamp, relay logs `~/.local/share/witchat/relay/logs/*.log`, btmon capture `/tmp/beacontest.cap`.
 
-**Next test:** leave advertising disabled and the agent running; operator keeps bitchat foregrounded with the screen awake for five minutes; confirm relay visibility in-app; exchange identifiable messages between phones; correlate UI observations and message delivery with **timestamped logs and the relevant Bluetooth connection handles**.
+Supported conclusion, downgraded to **[?]** pending per-interval advertising evidence: outgoing connections and Noise sessions were possible while the beacon was absent or failing. These observations do not establish the underlying cause of the pairing/disconnect behavior, and do not establish that advertising was absent for the entire window.
+
+Do not restore the generic beacon merely to improve Bluetooth Settings visibility — restore it only for a stated purpose, recording the change.
+
+**Open item:** establish the last confirmed successful advertisement (and its timestamp) from logs, read-only; see §7.
 
 ## 7. Open items and where the evidence lives
 
+- Last confirmed successful advertisement on the CM5 (and timestamp) — to be established by read-only log review; current `btmgmt` state is a snapshot, not history
 - CM5 peripheral advertisement rejection (MGMT Invalid Parameters 0x0d on data step) — layer unresolved → issue #2 (+ captures)
 - Zero 2 W session-establishment failure with transport alive — attribution unresolved → issue #2
 - Offline DM relay/spooling → issue #1
