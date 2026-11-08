@@ -2,6 +2,188 @@
 
 Field documentation from running `witchat --relay` against iOS phones across three board classes, plus a procedure for diagnosing relay/Bluetooth problems without destroying working configurations.
 
+# CM5 (piunora): witchat relay and Bluetooth operations
+
+**Baseline recorded November 8.** This document distinguishes the deployed configuration from the recommended template. Verify live state before making changes.
+
+## Architecture
+
+The working witchat connection path observed on this station is:
+
+**CM5 scans → connects outward to the iPhone’s GATT server → subscribes → exchanges witchat packets.**
+
+A separate `bluetoothctl` session provides the default pairing agent and optionally broadcasts a generic Bluetooth advertisement.
+
+- The generic advertisement contains the adapter name and flags, without the bitchat service UUID.
+- Visibility in iPhone Bluetooth Settings does not establish visibility or message delivery inside bitchat.
+- Witchat’s own advertisement registration has failed with **MGMT Invalid Parameters (`0x0d`)**. This does not, by itself, establish a controller-firmware defect.
+- Local GATT-server registration remains a separate verification question. Absence from `busctl tree org.bluez` alone is insufficient evidence.
+
+## Components
+
+### 1. `witchat-relay.service`
+
+```ini
+ExecStart=%h/.local/bin/witchat --relay --nick CollisRelayStation1
+```
+
+Recorded build:
+
+- Native aarch64.
+- Commit lineage `905f17d` → `e87853a`.
+- Local patches: six-hour public-message retention, disk persistence, and announce-trust instrumentation.
+- Outgoing BLE connections have established Noise sessions.
+- Nostr relay connections were reported healthy; verify their intended function separately from local Bluetooth relaying.
+
+Record the exact executable hash, source revision, local patches, and service definition after each deployment.
+
+### 2. `bt-beacon-s1.service`
+
+Existing script: `bt-beacon-s1.sh`.
+
+The deployed design uses one long-lived `bluetoothctl` session, receiving commands through `/tmp/beacon-in`:
+
+```text
+agent NoInputNoOutput
+default-agent
+advertise on
+pairable on
+discoverable on
+```
+
+**Agent capability is intended configuration, not confirmed outcome.** Captured pairing responses have still presented `KeyboardDisplay (0x04)`. Identify the selected agent and transmitted capability before claiming Just Works works or is unsupported.
+
+Application-specific agents and explicit default-agent selection govern agent handling. Do not assume “last registered wins” or that one session makes all capability problems impossible.
+
+The existing script also includes:
+
+- Flag reassertion every 25 seconds.
+- Hourly session replacement.
+- Controller power-cycling following advertisement-registration failure.
+
+These are historical recovery behaviors, **not requirements to copy into new deployments**. Radio resets interrupt witchat’s connections; session replacement interrupts agent and advertisement availability.
+
+### 3. Recorded BlueZ settings
+
+`/etc/bluetooth/main.conf`, under `[General]`:
+
+```ini
+DiscoverableTimeout=0
+PairableTimeout=0
+```
+
+Recorded backup: `main.conf.bak-20261107`.
+
+Adapter settings file:
+
+```text
+/var/lib/bluetooth/2C:CF:67:F0:3A:F2/settings
+```
+
+Recorded state:
+
+```ini
+Discoverable=true
+Pairable=true
+DiscoverableTimeout=0
+PairableTimeout=0
+```
+
+Zero timeouts disable automatic expiry; they do not alone prove the enabled states survive every restart. Verify after reboot. Stop bluetoothd before deliberately editing its stored adapter settings, and preserve a backup.
+
+### 4. Identity
+
+- Hostname: `piunora`.
+- Witchat nickname: `CollisRelayStation1`.
+- Recorded fingerprint: `00da626a96bf64bf`.
+- Recorded Bluetooth alias: `CollisRelayStation5`.
+
+The differing names can confuse observations. Align them deliberately when appropriate.
+
+**Changing the Bluetooth alias does not change controller identity or clear bonds.** Preserve witchat identity and Bluetooth bonds during ordinary troubleshooting. Credentials belong in the secrets store, not this document.
+
+## Template script starting point
+
+Preserve the existing script. Create a station-specific copy when adapting the setup.
+
+The following is an **experimental starter**, not a verified replacement. It keeps stdin open, uses a private runtime directory, and avoids automatic radio resets or periodic restarts.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+: "${XDG_RUNTIME_DIR:?Run in the station user's runtime environment}"
+BT_ADAPTER="${BT_ADAPTER:?Set the adapter address accepted by bluetoothctl select}"
+ENABLE_BEACON="${ENABLE_BEACON:-0}"
+
+runtime_dir="$(mktemp -d "$XDG_RUNTIME_DIR/witchat-bt.XXXXXX")"
+fifo="$runtime_dir/input"
+bt_pid=""
+
+cleanup() {
+    trap - EXIT INT TERM
+    exec 3>&- || true
+    if [[ -n "$bt_pid" ]]; then
+        kill "$bt_pid" 2>/dev/null || true
+        wait "$bt_pid" 2>/dev/null || true
+    fi
+    rm -f -- "$fifo"
+    rmdir -- "$runtime_dir" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+mkfifo "$fifo"
+exec 3<>"$fifo"
+
+# stdout/stderr go to the service journal.
+bluetoothctl <"$fifo" 3>&- &
+bt_pid=$!
+
+printf 'select %s\n' "$BT_ADAPTER" >&3
+printf 'agent NoInputNoOutput\ndefault-agent\n' >&3
+printf 'pairable on\ndiscoverable on\n' >&3
+
+if [[ "$ENABLE_BEACON" == "1" ]]; then
+    printf 'advertise on\n' >&3
+fi
+
+wait "$bt_pid"
+```
+
+Before deployment:
+
+- Verify command completion and agent-registration success; process survival alone is insufficient.
+- Add tested readiness/error handling appropriate to the installed BlueZ version.
+- Keep generic advertising optional and independently switchable.
+- Do not add unattended `sudo`, recurring resets, or identity/bond deletion.
+- Record rollback steps and validate the station-specific service.
+
+## Latest beacon-off test
+
+Advertising was disabled inside the existing session while preserving the agent, bonds, identity, and other settings.
+
+Station-side observations included outgoing connections, established Noise sessions, increasing traffic counters, and recurring pairing/disconnection activity.
+
+**Supported finding:** outgoing connections and Noise sessions were possible without the generic beacon.
+
+**Still unverified in that window:** continuous foreground operation, actual in-app visibility, and delivery of identifiable messages. Do not infer these from aggregate counters.
+
+## Operating workflow
+
+1. Read this runbook and record live configuration before changing it.
+2. Identify the failing layer: discovery, GATT, Bluetooth pairing, witchat protocol, or actual delivery.
+3. Capture one timestamped connection, including direction and connection handle.
+4. Change one variable and preserve a rollback.
+5. Verify in-app visibility, identifiable message delivery, idle stability, and reconnection.
+6. Verify cold-boot recovery before declaring the setup persistent.
+7. Update this runbook in the same session. Separate observations, hypotheses, and confirmed fixes.
+
+Treat “accessory would like to open bitchat” as an app-opening alert, not evidence of Bluetooth pairing. Numeric-comparison prompts and SMP packets must be recorded separately.
+
+
 > **How to read this:** a successful command is not proof of successful pairing, message delivery, or persistent operation. Each claim below is tagged:
 > - **[O]** = direct observation from relay logs or btmon captures (what we saw)
 > - **[W]** = working configuration (reproduced more than once on the named board)
