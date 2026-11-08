@@ -4,7 +4,23 @@ Field documentation from running `witchat --relay` against iOS phones across thr
 
 # CM5 (piunora): witchat relay and Bluetooth operations
 
-**Baseline recorded November 8.** This document distinguishes the deployed configuration from the recommended template. Verify live state before making changes.
+**Baseline recorded November 8; live-state snapshot verified November 8 ~14:05 PST against the running station.** This document distinguishes the deployed configuration from the recommended template. Verify live state before making changes.
+
+## Live state (verified 2026-11-08 ~21:55–22:03 UTC)
+
+| Item | Verified value |
+|---|---|
+| `witchat-relay.service` | active; build `witchat 0.1.0 (7badfb3ef724)` on `linux/aarch64` |
+| Dep build lineage | **`7badfb3`** — piunora repo `main` HEAD (message: "diagnostics: per-check announce trust booleans"). The SHA `e87853a` quoted earlier for the same change is the openpi-side clone's SHA; do not mix the two when citing builds. |
+| Dep identity fingerprint | `00da626a96bf64bf` (confirmed 1,700+ times in today's relay log) |
+| Dep nickname | `CollisRelayStation1` |
+| Controller | `2C:CF:67:F0:3A:F2` (hci0, UART, BCM…); **Name: `piunora`**, **Alias: `CollisRelayStation5`** |
+| Roles | **Central-only.** witchat's peripheral path fails at startup (`central-only: advertise: … Failed to register advertisement`, most recent 21:56:21) |
+| Generic beacon | `bt-beacon-s1.service` active, but its `advertise on` is **currently failing too** — repeated `Failed to register` in `/tmp/bt-beacon.log` while the 25 s reassert loop runs; `btmgmt info` shows no `advertising` bit. `[O]` the plain generic beacon that registered on Nov 5–7 now fails as well — do not assume the generic path is immune to the controller's registration failure; treat "which advertise payload fails, when" as a new open question. |
+| Current sessions | Peers `db7b50a72cdb45d3` (nick `snar`) and `c81f1e013ab28597` (`anon4437K`) visible via announces; health `secured=1`–`2` with traffic both directions |
+| Adapter settings file | `/var/lib/bluetooth/2C:CF:67:F0:3A:F2/settings` (Discoverable/Pairable true, timeouts 0) |
+
+A witchat service restart at 21:56:21 followed the beacon-off test window; the beacon holder kept its agent registered but lost (and could not re-register) its advertisement. Current state therefore = agent up, **no advertisement on air**, central-only relay healthy.
 
 ## Architecture
 
@@ -36,6 +52,8 @@ Recorded build:
 - Nostr relay connections were reported healthy; verify their intended function separately from local Bluetooth relaying.
 
 Record the exact executable hash, source revision, local patches, and service definition after each deployment.
+
+Verified today: unit `ExecStart=%h/.local/bin/witchat --relay --nick CollisRelayStation1`; build `witchat 0.1.0 (7badfb3ef724)`; fingerprint `00da626a96bf64bf`.
 
 ### 2. `bt-beacon-s1.service`
 
