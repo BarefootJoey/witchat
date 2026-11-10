@@ -251,6 +251,7 @@ impl MeshRouter {
                     let direct = trust.direct;
                     let peer = self.peers.upsert_announce(sender.clone(), ann, trust);
                     if trust.verified {
+                        tracing::info!(sender = %sender.hex, ts_ms = packet.timestamp, "announce-verified-ts");
                         self.drain_prekey_bundle(&sender);
                     }
                     if direct {
