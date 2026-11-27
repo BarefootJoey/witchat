@@ -134,25 +134,25 @@ impl canvas::Program<Message> for MeshMap {
         for link in &self.links {
             let (from, to) = (point(&self.nodes[link.a]), point(&self.nodes[link.b]));
             if link.confirmed {
-                frame.stroke(&Path::line(from, to), Stroke::default().with_color(theme::GREEN_DIM).with_width(2.0));
+                frame.stroke(&Path::line(from, to), Stroke::default().with_color(theme::green_dim()).with_width(2.0));
                 continue;
             }
             let dashed = Stroke {
                 line_dash: LineDash { segments: &DASH, offset: 0 },
-                ..Stroke::default().with_color(theme::GRAY).with_width(1.2)
+                ..Stroke::default().with_color(theme::gray()).with_width(1.2)
             };
             frame.stroke(&Path::line(from, to), dashed);
             if let Some(target) = link.toward {
                 let source = if target == link.a { link.b } else { link.a };
                 let (tail, tip) = (point(&self.nodes[source]), point(&self.nodes[target]));
                 if let Some(head) = arrowhead(tail, tip, radius(self.nodes[target].ring) + 2.0) {
-                    frame.fill(&head, theme::GRAY);
+                    frame.fill(&head, theme::gray());
                 }
             }
         }
         for node in &self.nodes {
             let color = match node.ring {
-                0 => theme::GREEN,
+                0 => theme::green(),
                 1 => theme::peer_color(&node.id),
                 _ => Color { a: 0.8, ..theme::peer_color(&node.id) },
             };
@@ -162,7 +162,7 @@ impl canvas::Program<Message> for MeshMap {
             frame.fill_text(Text {
                 content: node.label.clone(),
                 position: Point::new(at.x + r + 3.0, at.y - 7.0),
-                color: if node.ring == 0 { theme::GREEN } else { theme::GREEN_SOFT },
+                color: if node.ring == 0 { theme::green() } else { theme::green_soft() },
                 size: Pixels(11.0),
                 ..Text::default()
             });

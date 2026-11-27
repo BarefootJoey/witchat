@@ -148,7 +148,7 @@ impl App {
                 Some(state) => format!("  {state}"),
                 None => "  nobody here in the last 5 min".into(),
             };
-            return vec![text(line).size(12).color(theme::GRAY).into()];
+            return vec![text(line).size(12).color(theme::gray()).into()];
         }
         people.into_iter().map(|p| person_row(cell, p)).collect()
     }
@@ -159,17 +159,17 @@ impl App {
 fn person_row<'a>(cell: &str, person: GeoPerson) -> Element<'a, Message> {
     // iOS: a map pin for people there, a dashed face for teleported ones.
     let (glyph, place) = if person.teleported { ("◌", "teleported") } else { ("⌖", "") };
-    let color = if person.mine { theme::ORANGE } else { theme::peer_color(&person.pubkey) };
+    let color = if person.mine { theme::orange() } else { theme::peer_color(&person.pubkey) };
     let name = text(person.name).size(14).color(color);
     let mut line =
         row![text(glyph).size(12).font(SYMBOL).color(color), if person.mine { name.font(BOLD) } else { name }]
             .spacing(6)
             .align_y(Alignment::Center);
     if person.mine {
-        line = line.push(text("(you)").size(12).color(theme::ORANGE));
+        line = line.push(text("(you)").size(12).color(theme::orange()));
     }
     if !place.is_empty() {
-        line = line.push(text(place).size(10).color(theme::GRAY));
+        line = line.push(text(place).size(10).color(theme::gray()));
     }
     if person.mine {
         return iced::widget::container(line).padding([2, 10]).into();

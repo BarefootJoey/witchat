@@ -53,6 +53,7 @@ impl App {
         match msg {
             PanelMsg::Open(tab) => {
                 self.close_sheet();
+                self.colors.open = false;
                 self.set_panel_tab(Some(tab));
             }
             PanelMsg::Close => {
@@ -135,8 +136,8 @@ impl App {
         };
         let head = row![
             column![
-                text("witchat/").size(20).font(BOLD).color(theme::GREEN),
-                text("bitchat-compatible mesh chat for the desktop").size(11).color(theme::GRAY),
+                text("witchat/").size(20).font(BOLD).color(theme::green()),
+                text("bitchat-compatible mesh chat for the desktop").size(11).color(theme::gray()),
             ]
             .spacing(2),
             Space::with_width(Length::Fill),
@@ -226,13 +227,13 @@ impl App {
             .into(),
         );
         if let Some(err) = &self.panel.relay_error {
-            items.push(text(err.clone()).size(12).color(theme::WARN).into());
+            items.push(text(err.clone()).size(12).color(theme::warn()).into());
         }
 
         items.push(heading("DANGER ZONE"));
         let wipe: Element<'_, Message> = if self.panel.confirm_wipe {
             row![
-                text("wipe identity, chats, and peers?").size(14).font(BOLD).color(theme::ALERT),
+                text("wipe identity, chats, and peers?").size(14).font(BOLD).color(theme::alert()),
                 button(text("wipe").size(12).font(BOLD))
                     .on_press(Message::Panel(PanelMsg::WipeNow))
                     .padding([4, 12])
@@ -246,7 +247,7 @@ impl App {
             .align_y(Alignment::Center)
             .into()
         } else {
-            button(text("panic wipe").size(13).color(theme::ALERT))
+            button(text("panic wipe").size(13).color(theme::alert()))
                 .on_press(Message::Panel(PanelMsg::AskWipe(true)))
                 .padding([4, 12])
                 .style(theme::accent_button)
@@ -309,7 +310,7 @@ fn info_tab() -> Element<'static, Message> {
         items.push(
             row![
                 container(text(glyph).size(14).font(SYMBOL).color(color)).width(44),
-                text(about).size(13).color(theme::GREEN_SOFT),
+                text(about).size(13).color(theme::green_soft()),
             ]
             .align_y(Alignment::Center)
             .into(),
@@ -321,7 +322,7 @@ fn info_tab() -> Element<'static, Message> {
     }
     items.push(heading("HOW TO USE"));
     for line in HOW_TO {
-        items.push(text(format!("• {line}")).size(13).color(theme::GREEN_SOFT).into());
+        items.push(text(format!("• {line}")).size(13).color(theme::green_soft()).into());
     }
     items.push(heading("ABOUT"));
     items.push(note(concat!(
@@ -373,31 +374,31 @@ const HOW_TO: &[&str] = &[
 
 fn symbols() -> [(&'static str, iced::Color, &'static str); 10] {
     [
-        ("★", theme::GOLD, "favorite: enables offline messages via nostr when mutual"),
-        ("☾", theme::GRAY, "they favorited you; favorite them back to make it mutual"),
-        ("✓", theme::VERIFIED, "identity verified (fingerprint compared or QR scanned)"),
+        ("★", theme::gold(), "favorite: enables offline messages via nostr when mutual"),
+        ("☾", theme::gray(), "they favorited you; favorite them back to make it mutual"),
+        ("✓", theme::verified(), "identity verified (fingerprint compared or QR scanned)"),
         (
             "·",
-            theme::GRAY,
+            theme::gray(),
             "private message sent, waiting for the phone (\"queued\": resent when they are back, up to 24 h)",
         ),
-        ("✓", theme::GREEN_DIM, "delivered"),
-        ("✓✓", theme::GREEN, "read"),
-        ("✉", theme::ORANGE, "unread private messages"),
-        ("●", theme::GREEN, "talking live (push-to-talk); the voice note follows"),
-        ("🎤", theme::ORANGE, "orange mic: someone is talking in #mesh, wait your turn"),
-        ("⚑", theme::GOLD, "bookmarked location channel"),
+        ("✓", theme::green_dim(), "delivered"),
+        ("✓✓", theme::green(), "read"),
+        ("✉", theme::orange(), "unread private messages"),
+        ("●", theme::green(), "talking live (push-to-talk); the voice note follows"),
+        ("🎤", theme::orange(), "orange mic: someone is talking in #mesh, wait your turn"),
+        ("⚑", theme::gold(), "bookmarked location channel"),
     ]
 }
 
 fn heading(label: &str) -> Element<'_, Message> {
-    container(text(label).size(11).font(BOLD).color(theme::GRAY))
+    container(text(label).size(11).font(BOLD).color(theme::gray()))
         .padding(iced::Padding { top: 14.0, ..iced::Padding::ZERO })
         .into()
 }
 
 pub(super) fn note(body: &str) -> Element<'_, Message> {
-    text(body).size(12).color(theme::GRAY).into()
+    text(body).size(12).color(theme::gray()).into()
 }
 
 pub(super) fn setting<'a>(
@@ -413,7 +414,7 @@ pub(super) fn setting_with<'a>(
     about: Element<'a, Message>,
     control: Option<Element<'a, Message>>,
 ) -> Element<'a, Message> {
-    let words = column![text(title).size(14).color(theme::GREEN), about].spacing(2);
+    let words = column![text(title).size(14).color(theme::green()), about].spacing(2);
     match control {
         Some(control) => row![words.width(Length::Fill), control].spacing(16).align_y(Alignment::Center).into(),
         None => words.into(),
@@ -427,8 +428,8 @@ pub(super) fn toggle(state: &str, press: Message) -> Element<'_, Message> {
 /// `label  value  [copy]`; `copy` is the raw value when it differs from the shown one.
 fn copy_row(label: &str, shown: String, copy: Option<String>) -> Element<'_, Message> {
     let mut line = row![
-        container(text(label).size(12).color(theme::GRAY)).width(100),
-        text(shown.clone()).size(13).color(theme::ORANGE).width(Length::Fill),
+        container(text(label).size(12).color(theme::gray())).width(100),
+        text(shown.clone()).size(13).color(theme::orange()).width(Length::Fill),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
@@ -446,7 +447,7 @@ fn copy_row(label: &str, shown: String, copy: Option<String>) -> Element<'_, Mes
 fn relay_row(url: &str, remove: Option<Message>) -> Element<'_, Message> {
     let tail: Element<'_, Message> = match remove {
         Some(msg) => button(text("remove").size(11)).on_press(msg).padding([2, 8]).style(theme::accent_button).into(),
-        None => text("built in").size(11).color(theme::GRAY).into(),
+        None => text("built in").size(11).color(theme::gray()).into(),
     };
-    row![text(url).size(13).color(theme::GREEN_SOFT).width(Length::Fill), tail].align_y(Alignment::Center).into()
+    row![text(url).size(13).color(theme::green_soft()).width(Length::Fill), tail].align_y(Alignment::Center).into()
 }

@@ -191,10 +191,10 @@ impl App {
                     .padding(4)
                     .style(|_| container::Style::default().background(iced::Color::WHITE)),
                 column![
-                    text("scan to verify me").size(14).font(BOLD).color(theme::GREEN),
+                    text("scan to verify me").size(14).font(BOLD).color(theme::green()),
                     text("a phone scans this, then proves it is talking to this PC. the code is signed and renews every few minutes.")
                         .size(12)
-                        .color(theme::GRAY),
+                        .color(theme::gray()),
                     row![
                         small_button("copy link", Message::Panel(PanelMsg::Copy(url.clone()))),
                         small_button("new code", msg(VerifyMsg::Refresh)),
@@ -207,14 +207,14 @@ impl App {
             .spacing(16)
             .align_y(Alignment::Center)
             .into(),
-            None => text("QR unavailable").size(12).color(theme::GRAY).into(),
+            None => text("QR unavailable").size(12).color(theme::gray()).into(),
         };
         let mut items = vec![mine];
-        items.push(text("scan a friend's QR").size(14).font(BOLD).color(theme::GREEN).into());
+        items.push(text("scan a friend's QR").size(14).font(BOLD).color(theme::green()).into());
         items.push(
             text("hold their QR up to the camera, open a screenshot or photo of it, or paste its text:")
                 .size(12)
-                .color(theme::GRAY)
+                .color(theme::gray())
                 .into(),
         );
         let camera_label = if state.camera.is_some() { "stop camera" } else { "scan with camera" };
@@ -222,7 +222,7 @@ impl App {
         if state.camera.is_some() {
             let view: Element<'_, Message> = match &state.camera_view {
                 Some((handle, w, h)) => image(handle.clone()).width(*w as f32).height(*h as f32).into(),
-                None => text("starting camera…").size(12).color(theme::GRAY).into(),
+                None => text("starting camera…").size(12).color(theme::gray()).into(),
             };
             items.push(view);
         }
@@ -241,7 +241,7 @@ impl App {
             .into(),
         );
         if let Some(err) = &state.error {
-            let mut line = row![text(err.clone()).size(12).color(theme::WARN).width(Length::Fill)].spacing(8);
+            let mut line = row![text(err.clone()).size(12).color(theme::warn()).width(Length::Fill)].spacing(8);
             if err == camera::DENIED {
                 line = line.push(small_button("open settings", msg(VerifyMsg::CameraSettings)));
             }
@@ -249,10 +249,10 @@ impl App {
         }
         let result = match &state.outcome {
             Some(Outcome::Waiting { nick, .. }) => {
-                Some((format!("verification requested for {nick}; waiting for its answer…"), theme::GRAY))
+                Some((format!("verification requested for {nick}; waiting for its answer…"), theme::gray()))
             }
-            Some(Outcome::Done(note)) => Some((format!("✓ {note}"), theme::VERIFIED)),
-            Some(Outcome::Failed(err)) => Some((err.clone(), theme::WARN)),
+            Some(Outcome::Done(note)) => Some((format!("✓ {note}"), theme::verified())),
+            Some(Outcome::Failed(err)) => Some((err.clone(), theme::warn())),
             None => None,
         };
         if let Some((line, color)) = result {
