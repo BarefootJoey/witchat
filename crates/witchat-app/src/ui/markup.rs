@@ -106,11 +106,11 @@ pub(super) fn body_spans(content: &str, color: Color, me: &str, mentioned: bool)
                     Some(_) => format!("{name}{suffix}").eq_ignore_ascii_case(me),
                     None => !me.is_empty() && name.eq_ignore_ascii_case(me),
                 };
-                let tint = if to_me { theme::ORANGE } else { color };
+                let tint = if to_me { theme::orange() } else { color };
                 span(format!("@{name}{suffix}")).color(tint).font(BOLD)
             }
             Token::Geohash(cell) => span(format!("#{cell}"))
-                .color(theme::GEO)
+                .color(theme::geo())
                 .font(font)
                 .underline(true)
                 .link(Message::JoinGeohash(cell.to_ascii_lowercase())),

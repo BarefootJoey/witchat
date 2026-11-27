@@ -61,6 +61,7 @@ impl App {
         match msg {
             LocMsg::Open => {
                 self.set_panel_tab(None);
+                self.colors.open = false;
                 self.location.open = true;
                 if self.location.region.is_none() {
                     self.location.region = Some(
@@ -208,7 +209,7 @@ impl App {
             items.push(wide_button(label, (!state.locating).then_some(LocMsg::Locate)));
         }
         if let Some(err) = &state.error {
-            let mut line = row![text(err.clone()).size(12).color(theme::WARN).width(Length::Fill)].spacing(8);
+            let mut line = row![text(err.clone()).size(12).color(theme::warn()).width(Length::Fill)].spacing(8);
             if err == locate::DENIED {
                 line = line.push(small_button("open settings", LocMsg::OpenSettings));
             }
@@ -222,7 +223,7 @@ impl App {
             format!("#bluetooth • {bluetooth}"),
             "mesh",
             None,
-            theme::VERIFIED,
+            theme::verified(),
         ));
         for (level, cell) in &state.located {
             items.push(self.channel_row(
@@ -230,7 +231,7 @@ impl App {
                 format!("#{cell} • {}", coverage(cell.len(), metric)),
                 cell,
                 Some(cell),
-                theme::GREEN,
+                theme::green(),
             ));
         }
         if !state.located.is_empty() {
@@ -238,7 +239,7 @@ impl App {
         }
         if self.social.location_enabled || !state.located.is_empty() {
             items.push(
-                button(container(text("remove location access").size(12).color(theme::GRAY)).center_x(Length::Fill))
+                button(container(text("remove location access").size(12).color(theme::gray())).center_x(Length::Fill))
                     .on_press(Message::Location(LocMsg::RemoveAccess))
                     .padding([6, 10])
                     .width(Length::Fill)
@@ -252,10 +253,10 @@ impl App {
 
         if let Some((name, cell)) = self.quick_join() {
             items.push(divider());
-            items.push(text("quick join").size(12).color(theme::GRAY).into());
+            items.push(text("quick join").size(12).color(theme::gray()).into());
             let body = row![
-                text(name.to_string()).size(14).color(theme::GEO).width(Length::Fill),
-                text(format!("#{cell}")).size(12).color(theme::GRAY),
+                text(name.to_string()).size(14).color(theme::geo()).width(Length::Fill),
+                text(format!("#{cell}")).size(12).color(theme::gray()),
             ]
             .align_y(Alignment::Center);
             items.push(
@@ -271,14 +272,14 @@ impl App {
                     "the region channel where people from {name} tend to gather — the wide cell around the main population center, not your location. it's public and well-known, so assume it's watched: quick join saves typing a geohash; it doesn't hide you or bypass blocks."
                 ))
                 .size(11)
-                .color(theme::GRAY)
+                .color(theme::gray())
                 .into(),
             );
         }
 
         if !self.social.bookmarks.is_empty() {
             items.push(divider());
-            items.push(text("bookmarked").size(12).color(theme::GRAY).into());
+            items.push(text("bookmarked").size(12).color(theme::gray()).into());
             for cell in &self.social.bookmarks {
                 let level = GeoLevel::for_length(cell.len());
                 items.push(self.channel_row(
@@ -286,13 +287,13 @@ impl App {
                     format!("{} • {}", level.name(), coverage(cell.len(), metric)),
                     cell,
                     Some(cell),
-                    theme::GEO,
+                    theme::geo(),
                 ));
             }
         }
 
         let head = row![
-            text("#location channels").size(18).font(BOLD).color(theme::GREEN),
+            text("#location channels").size(18).font(BOLD).color(theme::green()),
             Space::with_width(Length::Fill),
             button(text("DONE").size(12).font(BOLD))
                 .on_press(Message::Location(LocMsg::Close))
@@ -332,9 +333,9 @@ impl App {
         };
         let mut head = row![text(title).size(14).color(color)].spacing(8);
         if selected {
-            head = head.push(text("✔").size(14).font(SYMBOL).color(theme::GREEN));
+            head = head.push(text("✔").size(14).font(SYMBOL).color(theme::green()));
         }
-        let body = column![head, text(subtitle).size(12).color(theme::GRAY)].spacing(2);
+        let body = column![head, text(subtitle).size(12).color(theme::gray())].spacing(2);
         let mut line = row![button(body)
             .on_press(Message::Location(LocMsg::Join(target.to_string())))
             .padding([6, 10])
@@ -344,7 +345,7 @@ impl App {
         .align_y(Alignment::Center);
         if let Some(cell) = bookmark {
             let (glyph, tint) =
-                if self.social.bookmarks.contains(cell) { ("⚑", theme::GOLD) } else { ("⚐", theme::GRAY) };
+                if self.social.bookmarks.contains(cell) { ("⚑", theme::gold()) } else { ("⚐", theme::gray()) };
             line = line.push(
                 button(text(glyph).size(16).font(SYMBOL).color(tint))
                     .on_press(Message::Location(LocMsg::Bookmark(cell.to_string())))
@@ -359,7 +360,7 @@ impl App {
         let state = &self.location;
         let valid = is_valid_geohash(&state.teleport_draft);
         let mut col = column![row![
-            text("#").size(14).color(theme::GRAY),
+            text("#").size(14).color(theme::gray()),
             text_input("geohash", &state.teleport_draft)
                 .on_input(|v| Message::Location(LocMsg::TeleportDraft(v)))
                 .on_submit(Message::Location(LocMsg::Teleport))
@@ -375,7 +376,7 @@ impl App {
         .align_y(Alignment::Center)]
         .spacing(4);
         if let Some(err) = &state.teleport_error {
-            col = col.push(text(err.clone()).size(12).color(theme::ALERT));
+            col = col.push(text(err.clone()).size(12).color(theme::alert()));
         }
         col.into()
     }
@@ -391,18 +392,18 @@ fn people_title(label: &str, count: Option<usize>) -> String {
 }
 
 fn note(body: &str) -> Element<'_, Message> {
-    text(body).size(12).color(theme::GRAY).into()
+    text(body).size(12).color(theme::gray()).into()
 }
 
 fn divider<'a>() -> Element<'a, Message> {
     container(Space::with_height(1))
         .width(Length::Fill)
-        .style(|_| container::Style::default().background(theme::DIVIDER))
+        .style(|_| container::Style::default().background(theme::divider()))
         .into()
 }
 
 fn wide_button(label: &str, press: Option<LocMsg>) -> Element<'_, Message> {
-    button(container(text(label).size(12).color(theme::GREEN)).center_x(Length::Fill))
+    button(container(text(label).size(12).color(theme::green())).center_x(Length::Fill))
         .on_press_maybe(press.map(Message::Location))
         .padding([6, 10])
         .width(Length::Fill)

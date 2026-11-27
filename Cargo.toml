@@ -48,7 +48,7 @@ tracing-appender = "0.2"
 btleplug = "0.11"
 uuid-ble = { package = "uuid", version = "1" }
 futures = "0.3"
-iced = { version = "0.13", features = ["tokio", "debug", "image", "canvas"] }
+iced = { version = "0.13", features = ["tokio", "debug", "image", "canvas", "advanced"] }
 chrono = { version = "0.4", features = ["clock"] }
 nostr-sdk = "0.45"
 # nostr-sdk's own event types; named for `Keys::generate` (os-rng) and NIP-13 mining.

@@ -4,6 +4,7 @@
 
 mod actions;
 mod alerts;
+mod colors;
 mod composer;
 mod debug_view;
 mod diagnostics;
@@ -18,6 +19,7 @@ mod mesh_map;
 mod native_icon;
 mod panel;
 mod saved;
+mod selectable;
 mod slash;
 mod thread;
 mod tor_view;
@@ -35,7 +37,7 @@ use crate::voice::VoicePlayer;
 use anyhow::Result;
 use composer::focus_composer;
 use files::SlashKey;
-use iced::widget::text_input;
+use iced::widget::{text_editor, text_input};
 use iced::{window, Font, Subscription, Task};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -46,6 +48,7 @@ use witchat_nostr::Transport;
 const WINDOW_ICON: &[u8] = include_bytes!("../../../../assets/witchat-256.png");
 
 pub fn run_gui(radio: mesh_worker::Radio, nickname: Option<String>, background: bool) -> Result<()> {
+    theme::load_saved();
     let icon = window::icon::from_file_data(WINDOW_ICON, None)
         .map_err(|err| tracing::warn!(%err, "window icon unreadable"))
         .ok();
@@ -115,6 +118,10 @@ struct App {
     diag_replies: HashMap<String, Conversation>,
     /// Toasts, tray icon and window visibility.
     background: alerts::Background,
+    /// Selectable text of the open thread, one block per run of lines.
+    thread_blocks: Vec<selectable::Block>,
+    /// The colors sheet (sidebar cog).
+    colors: colors::ColorsState,
 }
 
 /// Routine status notes ("scan started", "wiped") hide after this; errors stay.
@@ -193,6 +200,9 @@ enum Message {
     Location(location::LocMsg),
     CloseRequested(window::Id),
     Focus(bool),
+    /// Selecting in block `n` of the thread's text.
+    ThreadText(usize, text_editor::Action),
+    Colors(colors::ColorsMsg),
 }
 
 impl App {
@@ -246,9 +256,12 @@ impl App {
             alone: first_run::Alone::default(),
             diag_replies: HashMap::new(),
             background: alerts::Background::new(),
+            thread_blocks: Vec::new(),
+            colors: colors::ColorsState::default(),
         };
         app.restore_social();
         app.restore_history();
+        app.sync_thread_text();
         let icons = window::get_latest().and_then(|id| window::run_with_handle(id, native_icon::apply)).discard();
         // Presence heartbeats wait for a fix; without one phones never count us.
         let locate = if app.social.location_enabled { app.start_locating() } else { Task::none() };
@@ -274,6 +287,12 @@ impl App {
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
+        let task = self.apply_message(message);
+        self.sync_thread_text();
+        task
+    }
+
+    fn apply_message(&mut self, message: Message) -> Task<Message> {
         if leaves_nick_field(&message) {
             self.commit_nick_draft();
         }
@@ -398,6 +417,7 @@ impl App {
                 self.title_clicks.retain(|t| now.duration_since(*t) < Duration::from_millis(1500));
                 self.title_clicks.push(now);
                 self.close_sheet();
+                self.colors.open = false;
                 self.set_panel_tab(Some(panel::Tab::Settings));
                 if self.title_clicks.len() >= 3 {
                     self.title_clicks.clear();
@@ -407,6 +427,8 @@ impl App {
             Message::Panel(msg) => return self.on_panel(msg),
             Message::Debug(msg) => self.on_debug(msg),
             Message::Location(msg) => return self.on_location(msg),
+            Message::ThreadText(block, action) => return self.on_thread_text(block, action),
+            Message::Colors(msg) => self.on_colors(msg),
         }
         Task::none()
     }
@@ -442,6 +464,7 @@ impl App {
         self.set_panel_tab(None);
         self.panel.confirm_wipe = false;
         self.close_sheet();
+        self.colors.open = false;
         self.selected = conv;
         self.inbox.open(&self.selected);
         self.send_read_receipts();

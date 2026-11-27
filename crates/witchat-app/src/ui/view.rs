@@ -7,7 +7,7 @@ use crate::inbox::Conversation;
 use crate::roster::PeerEntry;
 use crate::theme;
 use iced::font::{Style as FontStyle, Weight};
-use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
+use iced::widget::{button, column, container, row, scrollable, text, text_input, tooltip, Space};
 use iced::{Alignment, Color, Element, Font, Length};
 
 /// The logo mark: white monospace "WIT" on black, drawn as text so it stays
@@ -17,7 +17,7 @@ fn logo() -> Element<'static, Message> {
         .padding([4, 3])
         .style(|_| container::Style {
             background: Some(Color::BLACK.into()),
-            border: iced::Border { color: theme::GRAY, width: 1.0, radius: 3.0.into() },
+            border: iced::Border { color: theme::gray(), width: 1.0, radius: 3.0.into() },
             ..container::Style::default()
         })
         .into()
@@ -46,13 +46,13 @@ impl App {
             Conversation::Geo(cell) => self.location.people.people(cell, &self.nickname).len(),
             _ => self.roster.online_count(),
         };
-        let people_color = if people > 0 { theme::GREEN } else { theme::GRAY };
+        let people_color = if people > 0 { theme::green() } else { theme::gray() };
         let noun = if people == 1 { "person" } else { "people" };
         let mut right = row![].spacing(14).align_y(Alignment::Center);
         let unread = self.unread_dms();
         if unread > 0 {
             right = right.push(
-                button(text(format!("✉ {unread}")).size(14).font(SYMBOL).color(theme::ORANGE))
+                button(text(format!("✉ {unread}")).size(14).font(SYMBOL).color(theme::orange()))
                     .on_press(Message::OpenUnread)
                     .padding([2, 6])
                     .style(theme::icon_button),
@@ -62,11 +62,11 @@ impl App {
         container(
             row![
                 logo(),
-                button(text("witchat/").size(18).font(BOLD).color(theme::GREEN))
+                button(text("witchat/").size(18).font(BOLD).color(theme::green()))
                     .on_press(Message::TitleClicked)
                     .padding(0)
                     .style(theme::icon_button),
-                text("@").size(16).color(theme::GRAY),
+                text("@").size(16).color(theme::gray()),
                 text_input("nickname", &self.nick_draft)
                     .on_input(Message::NickChanged)
                     .on_submit(Message::NickSubmit)
@@ -93,7 +93,7 @@ impl App {
             items.push(self.conv_row(Conversation::Geo(cell), None));
         }
         items.push(
-            button(text("#location channels…").size(12).color(theme::GEO))
+            button(text("#location channels…").size(12).color(theme::geo()))
                 .on_press(Message::Location(super::location::LocMsg::Open))
                 .padding([4, 10])
                 .width(Length::Fill)
@@ -126,7 +126,7 @@ impl App {
                 std::time::Instant::now(),
             );
             for line in hint {
-                items.push(text(format!("  {line}")).size(12).color(theme::GRAY).into());
+                items.push(text(format!("  {line}")).size(12).color(theme::gray()).into());
             }
         }
         for peer in online {
@@ -138,7 +138,7 @@ impl App {
         if nobody_online && !self.linking.is_empty() {
             let n = self.linking.len();
             let noun = if n == 1 { "radio" } else { "radios" };
-            items.push(text(format!("  linking {n} {noun}…")).size(12).color(theme::GRAY).into());
+            items.push(text(format!("  linking {n} {noun}…")).size(12).color(theme::gray()).into());
         }
         let offline: Vec<&PeerEntry> = self.roster.offline_peers().filter(|p| !self.is_blocked(p)).collect();
         if !offline.is_empty() {
@@ -148,11 +148,20 @@ impl App {
             }
         }
         let list = scrollable(column(items).spacing(4)).height(Length::Fill);
-        column![list, text(radio_note(self.advertising)).size(11).color(theme::GRAY),]
-            .spacing(6)
-            .padding(10)
-            .width(Length::Fill)
-            .into()
+        let cog = tooltip(
+            button(text("⚙").size(18).font(SYMBOL).color(if self.colors.open {
+                theme::green_soft()
+            } else {
+                theme::gray()
+            }))
+            .on_press(Message::Colors(super::colors::ColorsMsg::Toggle))
+            .padding([2, 6])
+            .style(theme::icon_button),
+            text("colors").size(12),
+            tooltip::Position::Right,
+        )
+        .style(theme::header_bar);
+        column![list, cog].spacing(6).padding(10).width(Length::Fill).into()
     }
 
     /// Joined channels plus saved ones still connecting.
@@ -172,7 +181,7 @@ impl App {
         let mut head = row![].spacing(6).align_y(Alignment::Center);
         match (&conv, peer) {
             (Conversation::Geo(cell), _) => {
-                let color = if self.joined.contains(cell) { theme::GEO } else { theme::GRAY };
+                let color = if self.joined.contains(cell) { theme::geo() } else { theme::gray() };
                 head = head.push(text(format!("#{cell}")).size(15).color(color));
             }
             (Conversation::GeoDm { cell, pubkey }, _) => {
@@ -182,30 +191,30 @@ impl App {
                         .color(theme::peer_color(pubkey)),
                 );
             }
-            (_, None) => head = head.push(text("#mesh").size(15).color(theme::GREEN)),
+            (_, None) => head = head.push(text("#mesh").size(15).color(theme::green())),
             (_, Some(p)) => {
                 let (fav, fav_color) = self.favorite_mark(p);
                 head = head.push(text(fav).size(13).font(SYMBOL).color(fav_color));
-                let nick_color = if p.online { theme::peer_color(&p.id) } else { theme::GRAY };
+                let nick_color = if p.online { theme::peer_color(&p.id) } else { theme::gray() };
                 head = head.push(text(self.display_name(&p.id)).size(15).color(nick_color));
                 if self.is_verified(p) {
-                    head = head.push(text("✓").size(13).font(SYMBOL).color(theme::VERIFIED));
+                    head = head.push(text("✓").size(13).font(SYMBOL).color(theme::verified()));
                 }
                 if self.roster.session(&p.id) == Some("secured") {
-                    head = head.push(text("e2e").size(10).color(theme::GREEN_DIM));
+                    head = head.push(text("e2e").size(10).color(theme::green_dim()));
                 }
                 if !p.online && self.reachable_by_nostr(p) {
-                    head = head.push(text("nostr").size(10).color(theme::GEO));
+                    head = head.push(text("nostr").size(10).color(theme::geo()));
                 }
             }
         }
         head = head.push(Space::with_width(Length::Fill));
         if unread > 0 {
             head = head.push(
-                container(text(unread.to_string()).size(11).color(theme::BG)).padding([1, 7]).style(theme::badge),
+                container(text(unread.to_string()).size(11).color(theme::bg())).padding([1, 7]).style(theme::badge),
             );
         }
-        let body = column![head, text(self.preview(&conv)).size(11).color(theme::GRAY)].spacing(2);
+        let body = column![head, text(self.preview(&conv)).size(11).color(theme::gray())].spacing(2);
         button(body)
             .on_press(Message::Select(conv))
             .padding([6, 10])
@@ -217,9 +226,9 @@ impl App {
     /// iOS: star for our favorites, moon when they favorited us first.
     fn favorite_mark(&self, peer: &PeerEntry) -> (&'static str, Color) {
         match &peer.fingerprint {
-            Some(fp) if self.social.is_favorite(fp) => ("★", theme::GOLD),
-            Some(fp) if self.social.awaits_us(fp) => ("☾", theme::GRAY),
-            _ => (" ", theme::GRAY),
+            Some(fp) if self.social.is_favorite(fp) => ("★", theme::gold()),
+            Some(fp) if self.social.awaits_us(fp) => ("☾", theme::gray()),
+            _ => (" ", theme::gray()),
         }
     }
 
@@ -269,6 +278,9 @@ impl App {
     }
 
     fn main_pane(&self) -> Element<'_, Message> {
+        if self.colors.open {
+            return self.colors_view();
+        }
         if let Some(tab) = self.panel.tab {
             return self.panel_view(tab);
         }
@@ -291,14 +303,14 @@ impl App {
 
     fn channel_header(&self) -> Element<'_, Message> {
         let status_color = match (&self.error, self.radio_ready) {
-            (Some(_), false) => theme::ALERT,
-            (Some(_), true) => theme::WARN,
-            _ => theme::GRAY,
+            (Some(_), false) => theme::alert(),
+            (Some(_), true) => theme::warn(),
+            _ => theme::gray(),
         };
         let (title, title_color, kind, actions): (String, Color, String, Element<'_, Message>) = match &self.selected {
             Conversation::Mesh => (
                 "#mesh".into(),
-                theme::GREEN,
+                theme::green(),
                 match self.mesh_talkers() {
                     Some(who) => format!("● {who} talking live - the voice note follows"),
                     None => "public · bluetooth mesh".into(),
@@ -307,7 +319,7 @@ impl App {
             ),
             Conversation::Geo(cell) => (
                 format!("#{cell}"),
-                theme::GEO,
+                theme::geo(),
                 format!("location channel · nostr · {}", self.geo_link_state(cell).unwrap_or("connected")),
                 button(text("leave").size(12))
                     .on_press(Message::LeaveGeo(cell.clone()))
@@ -331,7 +343,7 @@ impl App {
         };
         container(
             row![
-                column![text(title).size(18).font(BOLD).color(title_color), text(kind).size(11).color(theme::GRAY),]
+                column![text(title).size(18).font(BOLD).color(title_color), text(kind).size(11).color(theme::gray()),]
                     .spacing(2),
                 Space::with_width(Length::Fill),
                 column![text(self.visible_status()).size(11).color(status_color), self.reset_offer(), actions]
@@ -424,29 +436,8 @@ impl App {
     }
 }
 
-/// Sidebar footer: what the radio is really doing, no stronger.
-fn radio_note(advertising: Option<bool>) -> &'static str {
-    match advertising {
-        Some(true) => "BLE both ways: connects out and advertises. Wi-Fi Aware phones show up only if a BLE peer relays them.",
-        Some(false) => "BLE central-only: connects to phones that advertise; phones cannot connect in. Wi-Fi Aware phones show up only if a BLE peer relays them.",
-        None => "No Bluetooth yet. Location channels and favorites over Nostr still work.",
-    }
-}
-
 fn section<'a>(label: impl text::IntoFragment<'a>) -> Element<'a, Message> {
-    container(text(label).size(10).color(theme::GRAY))
+    container(text(label).size(10).color(theme::gray()))
         .padding(iced::Padding { top: 10.0, right: 4.0, bottom: 2.0, left: 4.0 })
         .into()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::radio_note;
-
-    #[test]
-    fn footer_claims_advertising_only_when_it_runs() {
-        assert!(radio_note(Some(true)).contains("advertises"));
-        assert!(!radio_note(Some(false)).contains("both ways"));
-        assert!(!radio_note(None).contains("BLE both"));
-    }
 }

@@ -89,7 +89,7 @@ impl App {
             vec![setting_with("route relays through tor", tor_about(), Some(toggle(state, msg(TorMsg::Toggle))))];
         items.push(
             row![
-                text("proxy").size(12).color(theme::GRAY),
+                text("proxy").size(12).color(theme::gray()),
                 text_input(TOR_BROWSER_PROXY, self.tor_draft())
                     .on_input(move |v| msg(TorMsg::Draft(v)))
                     .on_submit(msg(TorMsg::Apply))
@@ -104,7 +104,7 @@ impl App {
             .into(),
         );
         if let Some(err) = &self.panel.tor.error {
-            items.push(text(err.clone()).size(12).color(theme::WARN).into());
+            items.push(text(err.clone()).size(12).color(theme::warn()).into());
         }
         let (line, color) = self.tor_status();
         items.push(text(line).size(12).color(color).into());
@@ -118,27 +118,27 @@ impl App {
     /// One line for settings and the location sheet.
     pub(super) fn tor_status(&self) -> (String, iced::Color) {
         let Some(proxy) = &self.social.tor_proxy else {
-            return (TOR_OFF_WARNING.into(), theme::ALERT);
+            return (TOR_OFF_WARNING.into(), theme::alert());
         };
         match self.panel.tor.health {
-            Some(TorHealth::Ready) => (format!("tor is on via {proxy}: relays see tor's address, not yours."), theme::VERIFIED),
+            Some(TorHealth::Ready) => (format!("tor is on via {proxy}: relays see tor's address, not yours."), theme::verified()),
             Some(TorHealth::Building) => (
                 format!("tor at {proxy} is reconnecting to the tor network; relays wait for it. after tor sits idle or the PC sleeps this can take a few minutes."),
-                theme::WARN,
+                theme::warn(),
             ),
             Some(TorHealth::Down) => (
                 format!("tor is on, but nothing answers at {proxy}: relay traffic is paused. start Tor Browser or the tor service."),
-                theme::WARN,
+                theme::warn(),
             ),
-            None => (format!("tor is on via {proxy}: checking tor…"), theme::GRAY),
+            None => (format!("tor is on via {proxy}: checking tor…"), theme::gray()),
         }
     }
 }
 
 fn tor_about() -> Element<'static, Message> {
-    let gray = |s: &'static str| span(s).color(theme::GRAY);
+    let gray = |s: &'static str| span(s).color(theme::gray());
     let link = |label: &'static str, url: &'static str| {
-        span(label).color(theme::GREEN).underline(true).link(Message::OpenUrl(url.to_string()))
+        span(label).color(theme::green()).underline(true).link(Message::OpenUrl(url.to_string()))
     };
     rich_text([
         gray(

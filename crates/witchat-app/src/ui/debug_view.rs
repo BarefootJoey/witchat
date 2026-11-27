@@ -305,26 +305,26 @@ fn relays_section(s: &Snapshot) -> Vec<Element<'_, Message>> {
 }
 
 fn heading(label: String) -> Element<'static, Message> {
-    container(text(label).size(11).font(BOLD).color(theme::GRAY))
+    container(text(label).size(11).font(BOLD).color(theme::gray()))
         .padding(iced::Padding { top: 14.0, ..iced::Padding::ZERO })
         .into()
 }
 
 fn note_owned(body: String) -> Element<'static, Message> {
-    text(body).size(12).color(theme::GRAY).into()
+    text(body).size(12).color(theme::gray()).into()
 }
 
 fn kv(label: &'static str, value: String) -> Element<'static, Message> {
     row![
-        container(text(label).size(12).color(theme::GRAY)).width(100),
-        text(value).size(12).color(theme::GREEN_SOFT).width(Length::Fill),
+        container(text(label).size(12).color(theme::gray())).width(100),
+        text(value).size(12).color(theme::green_soft()).width(Length::Fill),
     ]
     .spacing(8)
     .into()
 }
 
 fn line(title: String, detail: String, control: Option<Element<'static, Message>>) -> Element<'static, Message> {
-    let words = column![text(title).size(13).color(theme::ORANGE), text(detail).size(12).color(theme::GREEN_SOFT)]
+    let words = column![text(title).size(13).color(theme::orange()), text(detail).size(12).color(theme::green_soft())]
         .spacing(1)
         .width(Length::Fill);
     let mut line = row![words].spacing(12).align_y(Alignment::Center);
